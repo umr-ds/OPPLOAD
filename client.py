@@ -1,24 +1,45 @@
-import requests
-import keyring, rhizome
+import time
 
-class RestfulConnection:
-    def __init__(self, host="localhost", port=4110, user="pyserval", passwd="pyserval"):
-        self._AUTH = (user, passwd)
-        self._BASE = "http://{}:{}".format(host, port)
-        
-        self.keyring = keyring.Keyring(self)
-        self.rhizome = rhizome.Rhizome(self)
-        self.first_identity = self.keyring.get_first_identity()
+import restful
+import rhizome
+import utilities
+from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT
 
-    def get(self, path, **params):
-        request = requests.get(self._BASE+path, auth=self._AUTH, **params)
-        request.raise_for_status()
-        return request
-    
-    def post(self, path, **params):
-        request = requests.post(self._BASE+path, auth=self._AUTH, **params)
-        request.raise_for_status()
-        return request
-        
-    def __repr__(self):
-        return "RestfulConnection(\"{}, {}\")".format(self._BASE, self._AUTH)
+def client_call_dtn(server, name, params):
+    connection = restful.RestfulConnection(host=utilities.CONFIGURATION['host'], port=int(utilities.CONFIGURATION['port']), user=utilities.CONFIGURATION['user'], passwd=utilities.CONFIGURATION['passwd'])
+    rhiz = rhizome.Rhizome(connection)
+
+    my_sid = connection.first_identity
+    if not my_sid:
+        pfatal('The server does not have a SID. Create a SID with "servald keyring add" and restart Serval. Aborting.')
+        return
+
+    pinfo('Calling procedure \'%s\'.' % name)
+    call_bundle = utilities.make_bundle([('service', 'RPC'), ('name', name), ('sender', my_sid.sid), ('recipient', server)])
+    call_payload = CALL + name + '|' + '|'.join(params)
+    rhiz.insert(call_bundle, call_payload, my_sid.sid)
+    pinfo('Waiting for result.')
+
+    token = rhiz.get_bundlelist()[0].__dict__['.token']
+
+    result_received = False
+
+    while not result_received:
+        bundles = rhiz.get_bundlelist(token=token)
+        if bundles:
+            for bundle in bundles:
+                token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
+
+                def service_is_rpc(srvc): return srvc == 'RPC'
+                #def not_my_file(sid): return sid and sid != my_sid
+
+                if service_is_rpc(bundle.service):# and not_my_file(sender):
+                    potential_result = rhiz.get_decrypted(bundle.id)
+
+                    if potential_result[0] == ACK and bundle.name == name:
+                        pinfo('Received ACK. Will wait for result.')
+                    if potential_result[0] == RESULT and bundle.name == name:
+                        pinfo('Received result: %s' % potential_result[1:])
+                        result_received = True
+
+        time.sleep(1)

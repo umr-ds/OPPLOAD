@@ -1,4 +1,4 @@
-import client
+import restful
 
 class ServalIdentity:
     def __init__(self, _keyring, sid, did="", name="", identity=""):

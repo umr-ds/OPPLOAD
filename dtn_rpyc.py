@@ -5,6 +5,7 @@ import sys
 
 import utilities
 import server
+import client
 
 
 class DTN_RPyC(object):
@@ -29,7 +30,8 @@ class DTN_RPyC(object):
         group.add_argument('-b', '--broadcast', action='store_true', help='... in broadast mode.')
         group.add_argument('-p', '--peer', action='store_true', help='... in direct peer mode.')
         args = parser.parse_args(sys.argv[2:])
-        server.server_listen_rhizome()
+        utilities.pinfo("Starting server in DTN mode.")
+        server.server_listen_dtn()
 
     def call(self):
         parser = argparse.ArgumentParser(
@@ -38,8 +40,14 @@ class DTN_RPyC(object):
         group.add_argument('-d', '--dtn', action='store_true', help='... in DTN mode.')
         group.add_argument('-b', '--broadcast', action='store_true', help='... in broadast mode.')
         group.add_argument('-p', '--peer', action='store_true', help='... in direct peer mode.')
+
+        parser.add_argument('-s', '--server', help='Address of the RPC server', required=True)
+        parser.add_argument('-n', '--name', help='Name of the procedure to be called', required=True)
+        parser.add_argument('-a', '--arguments', help='List of parameters', nargs='*')
+
         args = parser.parse_args(sys.argv[2:])
-        utilities.pdebug('Calling the procedure in mode: %s' % group)
+        utilities.pinfo("Calling procedure \'%s\' in DTN mode." % args.name)
+        client.client_call_dtn(args.server, args.name, args.arguments)
 
 
 if __name__ == '__main__':

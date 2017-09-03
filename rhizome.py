@@ -1,4 +1,4 @@
-import client
+import restful
 
 class Bundle:
     def __init__(self, **entries):
