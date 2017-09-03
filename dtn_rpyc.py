@@ -1,8 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import sys
 
+import utilities
 import server
 
 
@@ -38,8 +39,9 @@ class DTN_RPyC(object):
         group.add_argument('-b', '--broadcast', action='store_true', help='... in broadast mode.')
         group.add_argument('-p', '--peer', action='store_true', help='... in direct peer mode.')
         args = parser.parse_args(sys.argv[2:])
-        print 'Calling the procedure in mode: %s' % group
+        utilities.pdebug('Calling the procedure in mode: %s' % group)
 
 
 if __name__ == '__main__':
+    utilities.read_config()
     DTN_RPyC()

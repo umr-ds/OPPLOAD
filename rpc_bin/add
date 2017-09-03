@@ -1,0 +1,5 @@
+#! /bin/sh
+
+RES=$(( $1 + $2 ))
+echo "$RES"
+exit 0
