@@ -19,9 +19,9 @@ def pinfo(string_to_print):
 def pwarn(string_to_print):
     print(WARN + str(string_to_print) + RESET)
 
-CALL    = '0'
-ACK     = '1'
-RESULT  = '2'
+CALL        = '0'
+ACK         = '1'
+RESULT      = '2'
 
 CONFIGURATION = {}
 

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+FILENAME=$2
+FILESIZE=$(stat -c%s "$FILENAME")
+
+dd if=/dev/urandom of=/tmp/echoresult bs=1 count=$FILESIZE
+echo /tmp/echoresult
+exit 0

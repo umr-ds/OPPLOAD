@@ -1,1 +1,4 @@
-add int int
+int add int int
+int size file file
+file get int
+file echo file file

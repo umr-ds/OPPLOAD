@@ -13,37 +13,43 @@ STOPPED = False
 server_mode = STOPPED
 OFFERED_PROCEDURES = None
 
+class Procedure():
+    def __init__(self, return_type=None, name=None, args=None):
+        self.return_type = return_type
+        self.name = name
+        self.args = args
+
 def get_offered_procedures(rpc_defs):
     offered_procedures = []
     with open(rpc_defs, 'r') as conf_file:
         for procedure_definition in conf_file:
             procedure_definition_list = procedure_definition.split(' ')
-            name = procedure_definition_list[0]
-            params = tuple(procedure_definition_list[1:])
-            offered_procedures.append([name, params])
+            return_type = procedure_definition_list[0]
+            name = procedure_definition_list[1]
+            args = procedure_definition_list[2:]
+            offered_procedures.append(Procedure(return_type=return_type, name=name, args=args))
 
     return offered_procedures
 
 def server_offering_procedure(procedure):
     global OFFERED_PROCEDURES
-    for proc in OFFERED_PROCEDURES:
-        if proc[0] == procedure[0] and len(proc[1]) == len(procedure[1]):
-            pinfo('Offering procedure \'%s\'.' % procedure[0])
+    for offered_procedure in OFFERED_PROCEDURES:
+        if offered_procedure.name == procedure.name and len(offered_procedure.args) == len(procedure.args):
+            procedure.return_type = offered_procedure.return_type
+            pinfo('Offering procedure \'%s\'.' % procedure.name)
             return True
-    pwarn('Not offering procedure \'%s\'. Waiting for next call.' % procedure[0])
+    pwarn('Not offering procedure \'%s\'. Waiting for next call.' % procedure.name)
     return False
 
 def server_parse_call(call):
-    call_list = call[1:].split('|')
-    procedure_name = call_list[0]
-    parameters = tuple(param.rstrip('\x00') for param in call_list[1:])
-    return (procedure_name, parameters)
+    return Procedure(name=call.name, args=call.args.split('|'))
 
-def server_execute_procedure(name, params):
-    pinfo('Starting execution of \'%s\'.' % name)
-    p = subprocess.Popen(os.getcwd() + '/' + utilities.CONFIGURATION['bins'] + '/' + name + ' ' + ' '.join(params), shell=True, stdout=subprocess.PIPE)
-    out, err = p.communicate()
-    pinfo('Execution of \'%s\' was successfull with result %s' % (name, out))
+def server_execute_procedure(procedure):
+    pinfo('Starting execution of \'%s\'.' % procedure.name)
+    bin_path = os.getcwd() + '/' + utilities.CONFIGURATION['bins'] + '/%s %s'
+    procedure_process = subprocess.Popen(bin_path % (procedure.name, ' '.join(procedure.args)), shell=True, stdout=subprocess.PIPE)
+    out, err = procedure_process.communicate()
+    pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
     return out
 
 def server_listen_dtn():
@@ -74,24 +80,33 @@ def server_listen_dtn():
             for bundle in bundles:
                 token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
 
-                def service_is_rpc(srvc): return srvc == 'RPC'
-                #def not_my_file(sid): return sid and sid != my_sid
+                if bundle.service == 'RPC':
+                    potential_call = rhiz.get_manifest(bundle.id)
 
-                if service_is_rpc(bundle.service):# and not_my_file(sender):
-                    potential_call = rhiz.get_decrypted(bundle.id)
-
-                    if potential_call[0] == CALL:
-                        pinfo('Received call. Will parse procedure.')
+                    if potential_call.type == CALL:
+                        pinfo('Received call. Will check if procedure is offered.')
                         procedure = server_parse_call(potential_call)
 
                         if server_offering_procedure(procedure):
-                            ack_bundle = utilities.make_bundle([('service', 'RPC'), ('name', procedure[0]), ('sender', bundle.recipient), ('recipient', bundle.sender)])
-                            rhiz.insert(ack_bundle, ACK, my_sid.sid)
+                            # We first have to download the file because it will be removed as soon we send the ack.
+                            if procedure.args[0] == 'file':
+                                path = '/tmp/%s_%s' % (procedure.name, potential_call.version)
+                                rhiz.get_decrypted_to_file(potential_call.id, path)
+                                procedure.args[1] = path
+                            
+                            ack_bundle = utilities.make_bundle([('service', 'RPC'), ('type', ACK), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
+                            rhiz.insert(ack_bundle, '', my_sid.sid, potential_call.id)
                             pinfo('Ack is sent. Will execute procedure.')
 
-                            result_bundle = utilities.make_bundle([('service', 'RPC'), ('name', procedure[0]), ('sender', bundle.recipient), ('recipient', bundle.sender)])
-                            result = str(RESULT) + str(server_execute_procedure(procedure[0], procedure[1]).rstrip())
-                            rhiz.insert(result_bundle, result, my_sid.sid)
-                            pinfo('Result was sent. Call successufull, waiting for next procedure.')
+                            result = server_execute_procedure(procedure).rstrip()
+
+                            if procedure.return_type == 'file':
+                                result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', 'file'), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
+                                rhiz.insert(result_bundle, open(result.decode('utf-8'), 'rb'), my_sid.sid, potential_call.id)
+                                pinfo('Result was sent. Call successufull, waiting for next procedure.')
+                            else:
+                                result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
+                                rhiz.insert(result_bundle, '', my_sid.sid, potential_call.id)
+                                pinfo('Result was sent. Call successufull, waiting for next procedure.')
 
         time.sleep(1)

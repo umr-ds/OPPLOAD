@@ -20,16 +20,16 @@ class Bundle:
     def __str__(self):
         if hasattr(self, "service"): prefix = self.service
         else: prefix = ""
-        if hasattr(self, 'name') and self.name: 
+        if hasattr(self, 'name') and self.name:
             return "{}:{}".format(prefix, self.name)
-        
+
         return "{}:{}*".format(prefix, self.id[:16])
 
 
 class Rhizome:
     def __init__(self, _connection):
         self._connection = _connection
-        
+
     # GET /restful/rhizome/bundlelist.json
     def get_bundlelist(self, token=None):
         bundlelist = None
@@ -43,7 +43,10 @@ class Rhizome:
     # GET /restful/rhizome/BID.rhm
     def get_manifest(self, bid):
         manifest = self._connection.get("/restful/rhizome/{}.rhm".format(bid)).text
-        return manifest.split('\0')
+        manifest_list = manifest.split('\0')
+        manifest_parts = list(filter(None, manifest_list[0].split('\n')))
+        manifest_dict = dict([(part.split('=')[0], part.split('=')[1])for part in manifest_parts])
+        return Bundle(**manifest_dict)
 
     # GET /restful/rhizome/BID/raw.bin
     def get_raw(self, bid):
@@ -54,15 +57,22 @@ class Rhizome:
     def get_decrypted(self, bid):
         decrypted = self._connection.get("/restful/rhizome/{}/decrypted.bin".format(bid)).text
         return decrypted
+
+    def get_decrypted_to_file(self, bid, path):
+        decrypted = self._connection.get("/restful/rhizome/{}/decrypted.bin".format(bid), stream=True)
         
+        with open(path, 'wb') as handle:
+            for block in decrypted.iter_content(1024 * 1024):
+                handle.write(block)
+
     # POST /restful/rhizome/insert
-    def insert(self, bundle, payload, sid=None):
+    def insert(self, bundle, payload, sid=None, bid=None):
         if not sid: sid = self._connection.first_identity.sid
 
         manifest_file = "\n".join(["{}={}".format(x[0],x[1]) for x in bundle.__dict__.items()])+"\n"
 
         multipart = [("bundle-author", sid)]
-        # if manifest.id: multipart.append(("bundle-id", manifest.id))
+        if bid: multipart.append(("bundle-id", bid))
         multipart.append(("manifest", ("manifest1", manifest_file, "rhizome/manifest;format=\"text+binarysig\"")))
         multipart.append(("payload", ("file1", payload)))
 

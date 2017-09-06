@@ -15,9 +15,11 @@ def client_call_dtn(server, name, params):
         return
 
     pinfo('Calling procedure \'%s\'.' % name)
-    call_bundle = utilities.make_bundle([('service', 'RPC'), ('name', name), ('sender', my_sid.sid), ('recipient', server)])
-    call_payload = CALL + name + '|' + '|'.join(params)
-    rhiz.insert(call_bundle, call_payload, my_sid.sid)
+    call_bundle = utilities.make_bundle([('service', 'RPC'), ('type', CALL), ('name', name), ('args', '|'.join(params)), ('sender', my_sid.sid), ('recipient', server)])
+    payload = ''
+    if len(params) == 2 and params[0] == 'file':
+        payload = open(params[1], 'rb')
+    rhiz.insert(call_bundle, payload, my_sid.sid)
     pinfo('Waiting for result.')
 
     token = rhiz.get_bundlelist()[0].__dict__['.token']
@@ -30,16 +32,18 @@ def client_call_dtn(server, name, params):
             for bundle in bundles:
                 token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
 
-                def service_is_rpc(srvc): return srvc == 'RPC'
-                #def not_my_file(sid): return sid and sid != my_sid
+                if bundle.service == 'RPC':
+                    potential_result = rhiz.get_manifest(bundle.id)
 
-                if service_is_rpc(bundle.service):# and not_my_file(sender):
-                    potential_result = rhiz.get_decrypted(bundle.id)
-
-                    if potential_result[0] == ACK and bundle.name == name:
+                    if potential_result.type == ACK and potential_result.name == name:
                         pinfo('Received ACK. Will wait for result.')
-                    if potential_result[0] == RESULT and bundle.name == name:
-                        pinfo('Received result: %s' % potential_result[1:])
+                    if potential_result.type == RESULT and potential_result.name == name and potential_result.recipient == my_sid.sid:
+                        if potential_result.result == 'file':
+                            path = '/tmp/%s_%s' % (name, potential_result.version)
+                            rhiz.get_decrypted_to_file(potential_result.id, path)
+                            pinfo('Received result: %s' % path)
+                        else:
+                            pinfo('Received result: %s' % potential_result.result)
                         result_received = True
 
         time.sleep(1)

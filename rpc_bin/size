@@ -1,0 +1,6 @@
+#!/bin/bash
+
+FILENAME=$2
+FILESIZE=$(stat -c%s "$FILENAME")
+echo "$FILESIZE"
+exit 0

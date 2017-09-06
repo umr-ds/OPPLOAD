@@ -1,0 +1,5 @@
+#!/bin/bash
+
+dd if=/dev/urandom of=/tmp/testresult bs=1M count=$1
+echo /tmp/testresult
+exit 0
