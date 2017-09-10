@@ -52,4 +52,7 @@ class DTN_RPyC(object):
 
 if __name__ == '__main__':
     utilities.read_config()
+    if not utilities.serval_running():
+        utilities.pfatal('Serval is not running. Aborting.')
+        sys.exit(1)
     DTN_RPyC()

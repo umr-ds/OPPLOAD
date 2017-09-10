@@ -1,4 +1,5 @@
-import base64, json
+import base64, json, requests
+import restful
 import rhizome
 
 RESET = '\033[0m'
@@ -38,3 +39,10 @@ def make_bundle(manifest_props):
         bundle.__dict__[prop[0]] = prop[1]
 
     return bundle
+
+def serval_running():
+    try:
+        restful.RestfulConnection(host=CONFIGURATION['host'], port=int(CONFIGURATION['port']), user=CONFIGURATION['user'], passwd=CONFIGURATION['passwd'])
+        return True
+    except requests.exceptions.ConnectionError:
+        return False
