@@ -2,6 +2,7 @@ import base64, json
 import time
 import subprocess
 import os
+from _thread import start_new_thread
 
 import utilities
 import restful
@@ -52,6 +53,33 @@ def server_execute_procedure(procedure):
     pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
     return out
 
+def server_handle_call(potential_call, rhiz, my_sid):
+    pinfo('Received call. Will check if procedure is offered.')
+    procedure = server_parse_call(potential_call)
+    
+    if server_offering_procedure(procedure):
+        # We first have to download the file because it will be removed as soon we send the ack.
+        if procedure.args[0] == 'file':
+            path = '/tmp/%s_%s' % (procedure.name, potential_call.version)
+            rhiz.get_decrypted_to_file(potential_call.id, path)
+            procedure.args[1] = path
+            
+        ack_bundle = utilities.make_bundle([('service', 'RPC'), ('type', ACK), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
+        rhiz.insert(ack_bundle, '', my_sid.sid, potential_call.id)
+        pinfo('Ack is sent. Will execute procedure.')
+            
+        result = server_execute_procedure(procedure).rstrip()
+            
+        if procedure.return_type == 'file':
+            result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', 'file'), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
+            rhiz.insert(result_bundle, open(result.decode('utf-8'), 'rb'), my_sid.sid, potential_call.id)
+            pinfo('Result was sent. Call successufull, waiting for next procedure.')
+        else:
+            result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
+            rhiz.insert(result_bundle, '', my_sid.sid, potential_call.id)
+            pinfo('Result was sent. Call successufull, waiting for next procedure.')
+    
+
 def server_listen_dtn():
     global OFFERED_PROCEDURES
 
@@ -84,29 +112,7 @@ def server_listen_dtn():
                     potential_call = rhiz.get_manifest(bundle.id)
 
                     if potential_call.type == CALL:
-                        pinfo('Received call. Will check if procedure is offered.')
-                        procedure = server_parse_call(potential_call)
-
-                        if server_offering_procedure(procedure):
-                            # We first have to download the file because it will be removed as soon we send the ack.
-                            if procedure.args[0] == 'file':
-                                path = '/tmp/%s_%s' % (procedure.name, potential_call.version)
-                                rhiz.get_decrypted_to_file(potential_call.id, path)
-                                procedure.args[1] = path
-                            
-                            ack_bundle = utilities.make_bundle([('service', 'RPC'), ('type', ACK), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
-                            rhiz.insert(ack_bundle, '', my_sid.sid, potential_call.id)
-                            pinfo('Ack is sent. Will execute procedure.')
-
-                            result = server_execute_procedure(procedure).rstrip()
-
-                            if procedure.return_type == 'file':
-                                result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', 'file'), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
-                                rhiz.insert(result_bundle, open(result.decode('utf-8'), 'rb'), my_sid.sid, potential_call.id)
-                                pinfo('Result was sent. Call successufull, waiting for next procedure.')
-                            else:
-                                result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
-                                rhiz.insert(result_bundle, '', my_sid.sid, potential_call.id)
-                                pinfo('Result was sent. Call successufull, waiting for next procedure.')
+                        start_new_thread(server_handle_call, (potential_call, rhiz, my_sid))
 
         time.sleep(1)
+#
