@@ -49,10 +49,13 @@ class DTN_RPyC(object):
         utilities.pinfo("Calling procedure \'%s\' in DTN mode." % args.name)
         client.client_call_dtn(args.server, args.name, args.arguments)
 
+def pre_exec_checks():
+    if not utilities.config_files_present():
+        sys.exit(1)
+    if not utilities.serval_running():
+        sys.exit(1)
 
 if __name__ == '__main__':
     utilities.read_config()
-    if not utilities.serval_running():
-        utilities.pfatal('Serval is not running. Aborting.')
-        sys.exit(1)
+    pre_exec_checks()
     DTN_RPyC()

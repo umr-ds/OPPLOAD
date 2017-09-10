@@ -1,4 +1,4 @@
-import base64, json, requests
+import base64, json, requests, os
 import restful
 import rhizome
 
@@ -26,6 +26,15 @@ RESULT      = '2'
 
 CONFIGURATION = {}
 
+def config_files_present():
+    if not os.path.exists(CONFIGURATION['bins']):
+        pfatal('RPC binary path does not exist. Aborting.')
+        return False
+    if not os.path.exists(CONFIGURATION['rpcs']):
+        pfatal('RPC definition file does not exists. Aborting.')
+        return False
+    return True
+
 def read_config():
     global CONFIGURATION
     with open('rpc.conf', 'r') as rpc_conf:
@@ -42,7 +51,13 @@ def make_bundle(manifest_props):
 
 def serval_running():
     try:
-        restful.RestfulConnection(host=CONFIGURATION['host'], port=int(CONFIGURATION['port']), user=CONFIGURATION['user'], passwd=CONFIGURATION['passwd'])
+        r = restful.RestfulConnection(host=CONFIGURATION['host'], port=int(CONFIGURATION['port']), user=CONFIGURATION['user'], passwd=CONFIGURATION['passwd'])
         return True
     except requests.exceptions.ConnectionError:
-        return False
+        pfatal('Serval is not running or not listening on %s:%s. Aborting.' % (CONFIGURATION['host'], CONFIGURATION['port']))
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            pfatal('Serval returned an Unauthorized exception. You should check the credentials: %s:%s' % (CONFIGURATION['user'], CONFIGURATION['passwd']))
+        else:
+            pfatal('An error occured. Aborting. : %s' % e)
+    return False
