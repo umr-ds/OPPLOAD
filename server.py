@@ -59,7 +59,7 @@ def server_listen_dtn():
     server_mode = RUNNING
 
     connection = restful.RestfulConnection(host=utilities.CONFIGURATION['host'], port=int(utilities.CONFIGURATION['port']), user=utilities.CONFIGURATION['user'], passwd=utilities.CONFIGURATION['passwd'])
-    rhiz = rhizome.Rhizome(connection)
+    rhiz = connection.rhizome
 
     my_sid = connection.first_identity
     if not my_sid:

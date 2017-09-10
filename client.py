@@ -7,7 +7,7 @@ from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT
 
 def client_call_dtn(server, name, params):
     connection = restful.RestfulConnection(host=utilities.CONFIGURATION['host'], port=int(utilities.CONFIGURATION['port']), user=utilities.CONFIGURATION['user'], passwd=utilities.CONFIGURATION['passwd'])
-    rhiz = rhizome.Rhizome(connection)
+    rhiz = connection.rhizome
 
     my_sid = connection.first_identity
     if not my_sid:
