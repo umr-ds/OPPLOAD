@@ -23,6 +23,7 @@ def pwarn(string_to_print):
 CALL        = '0'
 ACK         = '1'
 RESULT      = '2'
+ERROR       = '3'
 
 CONFIGURATION = {}
 

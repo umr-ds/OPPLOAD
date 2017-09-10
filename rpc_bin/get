@@ -1,5 +1,11 @@
 #!/bin/bash
 
+if [ $1 -lt 1 ]
+then
+    echo "Size to small."
+    exit 1
+fi
+
 dd if=/dev/urandom of=/tmp/testresult bs=1M count=$1
 echo /tmp/testresult
 exit 0

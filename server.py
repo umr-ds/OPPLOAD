@@ -7,7 +7,7 @@ from _thread import start_new_thread
 import utilities
 import restful
 import rhizome
-from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT
+from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT, ERROR
 
 RUNNING = True
 STOPPED = False
@@ -54,8 +54,12 @@ def server_execute_procedure(procedure):
     bin_path = os.getcwd() + '/' + utilities.CONFIGURATION['bins'] + '/%s %s'
     procedure_process = subprocess.Popen(bin_path % (procedure.name, ' '.join(procedure.args)), shell=True, stdout=subprocess.PIPE)
     out, err = procedure_process.communicate()
-    pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
-    return out
+    if procedure_process.returncode != 0:
+        pwarn('Execution of \'%s\' was not successfull. Will return error %s' % (procedure.name, out))
+        return (1, out)
+    else:
+        pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
+        return (0, out)
 
 def server_handle_call(potential_call, rhiz, my_sid):
     pinfo('Received call. Will check if procedure is offered.')
@@ -72,7 +76,11 @@ def server_handle_call(potential_call, rhiz, my_sid):
         rhiz.insert(ack_bundle, '', my_sid.sid, potential_call.id)
         pinfo('Ack is sent. Will execute procedure.')
             
-        result = server_execute_procedure(procedure).rstrip()
+        code, result = server_execute_procedure(procedure)
+        if code == 1:
+            error_bundle = utilities.make_bundle([('service', 'RPC'), ('type', ERROR), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
+            rhiz.insert(error_bundle, '', my_sid.sid, potential_call.id)
+            return
             
         if procedure.return_type == 'file':
             result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', 'file'), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
