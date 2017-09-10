@@ -1,8 +1,10 @@
 #!/bin/bash
 
 FILENAME=$2
+BNAME=${FILENAME##*/}
 FILESIZE=$(stat -c%s "$FILENAME")
+RESULTNAME="echoresult_$BNAME-$FILESIZE"
 
-dd if=/dev/urandom of=/tmp/echoresult bs=1 count=$FILESIZE
-echo /tmp/echoresult
+dd if=/dev/urandom of=/tmp/$RESULTNAME bs=1 count=$FILESIZE
+echo /tmp/$RESULTNAME
 exit 0
