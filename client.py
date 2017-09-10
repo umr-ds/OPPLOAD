@@ -5,6 +5,11 @@ import rhizome
 import utilities
 from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT
 
+def rpc_for_me(potential_result, name, args, sid):
+    return potential_result.name == name \
+        and potential_result.args == args \
+        and potential_result.recipient == sid 
+
 def client_call_dtn(server, name, params):
     connection = restful.RestfulConnection(host=utilities.CONFIGURATION['host'], port=int(utilities.CONFIGURATION['port']), user=utilities.CONFIGURATION['user'], passwd=utilities.CONFIGURATION['passwd'])
     rhiz = connection.rhizome
@@ -15,7 +20,8 @@ def client_call_dtn(server, name, params):
         return
 
     pinfo('Calling procedure \'%s\'.' % name)
-    call_bundle = utilities.make_bundle([('service', 'RPC'), ('type', CALL), ('name', name), ('args', '|'.join(params)), ('sender', my_sid.sid), ('recipient', server)])
+    args = '|'.join(params)
+    call_bundle = utilities.make_bundle([('service', 'RPC'), ('type', CALL), ('name', name), ('args', args), ('sender', my_sid.sid), ('recipient', server)])
     payload = ''
     if len(params) == 2 and params[0] == 'file':
         payload = open(params[1], 'rb')
@@ -35,9 +41,9 @@ def client_call_dtn(server, name, params):
                 if bundle.service == 'RPC':
                     potential_result = rhiz.get_manifest(bundle.id)
 
-                    if potential_result.type == ACK and potential_result.name == name:
+                    if potential_result.type == ACK and rpc_for_me(potential_result, name, args, my_sid.sid):
                         pinfo('Received ACK. Will wait for result.')
-                    if potential_result.type == RESULT and potential_result.name == name and potential_result.recipient == my_sid.sid:
+                    if potential_result.type == RESULT and rpc_for_me(potential_result, name, args, my_sid.sid):
                         if potential_result.result == 'file':
                             path = '/tmp/%s_%s' % (name, potential_result.version)
                             rhiz.get_decrypted_to_file(potential_result.id, path)
