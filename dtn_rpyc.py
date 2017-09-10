@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import signal
 
 import utilities
 import server
@@ -55,7 +56,12 @@ def pre_exec_checks():
     if not utilities.serval_running():
         sys.exit(1)
 
+def signal_handler(signal, frame):
+    utilities.pwarn('Stopping DTN-RPyC.')
+    sys.exit(0)
+
 if __name__ == '__main__':
+    signal.signal(signal.SIGINT, signal_handler)
     utilities.read_config()
     pre_exec_checks()
     DTN_RPyC()

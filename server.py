@@ -59,7 +59,7 @@ def server_execute_procedure(procedure):
         return (1, out)
     else:
         pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
-        return (0, out)
+        return (0, out.rstrip())
 
 def server_handle_call(potential_call, rhiz, my_sid):
     pinfo('Received call. Will check if procedure is offered.')
