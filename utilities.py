@@ -49,10 +49,15 @@ def read_config(path):
         pfatal('DTN-RPyC configuration file %s was not found. Aborting.' % path)
         return False
 
-def make_bundle(manifest_props):
+def make_bundle(manifest_props, default=False):
     bundle = rhizome.Bundle()
     for prop in manifest_props:
         bundle.__dict__[prop[0]] = prop[1]
+    
+    if default:
+        default_props = [('service', 'RPC')]
+        for prop in default_props:
+            bundle.__dict__[prop[0]] = prop[1]
 
     return bundle
 

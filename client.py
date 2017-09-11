@@ -21,7 +21,7 @@ def client_call_dtn(server, name, params):
 
     pinfo('Calling procedure \'%s\'.' % name)
     args = '|'.join(params)
-    call_bundle = utilities.make_bundle([('service', 'RPC'), ('type', CALL), ('name', name), ('args', args), ('sender', my_sid.sid), ('recipient', server)])
+    call_bundle = utilities.make_bundle([('type', CALL), ('name', name), ('args', args), ('sender', my_sid.sid), ('recipient', server)], True)
     payload = ''
     if len(params) == 2 and params[0] == 'file':
         payload = open(params[1], 'rb')

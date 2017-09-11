@@ -72,23 +72,23 @@ def server_handle_call(potential_call, rhiz, my_sid):
             rhiz.get_decrypted_to_file(potential_call.id, path)
             procedure.args[1] = path
             
-        ack_bundle = utilities.make_bundle([('service', 'RPC'), ('type', ACK), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
-        rhiz.insert(ack_bundle, '', my_sid.sid, potential_call.id)
+        ack_bundle = utilities.make_bundle([('type', ACK), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender), ('args', potential_call.args)], True)
+        rhiz.insert(ack_bundle, '', my_sid.sid)
         pinfo('Ack is sent. Will execute procedure.')
             
         code, result = server_execute_procedure(procedure)
         if code == 1:
-            error_bundle = utilities.make_bundle([('service', 'RPC'), ('type', ERROR), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
-            rhiz.insert(error_bundle, '', my_sid.sid, potential_call.id)
+            error_bundle = utilities.make_bundle([('type', ERROR), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender), ('args', potential_call.args)], True)
+            rhiz.insert(error_bundle, '', my_sid.sid, ack_bundle.id)
             return
             
         if procedure.return_type == 'file':
-            result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', 'file'), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
-            rhiz.insert(result_bundle, open(result.decode('utf-8'), 'rb'), my_sid.sid, potential_call.id)
+            result_bundle = utilities.make_bundle([('type', RESULT), ('result', 'file'), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender), ('args', potential_call.args)], True)
+            rhiz.insert(result_bundle, open(result.decode('utf-8'), 'rb'), my_sid.sid, ack_bundle.id)
             pinfo('Result was sent. Call successufull, waiting for next procedure.')
         else:
-            result_bundle = utilities.make_bundle([('service', 'RPC'), ('type', RESULT), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender)])
-            rhiz.insert(result_bundle, '', my_sid.sid, potential_call.id)
+            result_bundle = utilities.make_bundle([('type', RESULT), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender), ('args', potential_call.args)], True)
+            rhiz.insert(result_bundle, '', my_sid.sid, ack_bundle.id)
             pinfo('Result was sent. Call successufull, waiting for next procedure.')
     
 
@@ -100,6 +100,8 @@ def server_listen_dtn():
 
     connection = restful.RestfulConnection(host=utilities.CONFIGURATION['host'], port=int(utilities.CONFIGURATION['port']), user=utilities.CONFIGURATION['user'], passwd=utilities.CONFIGURATION['passwd'])
     rhiz = connection.rhizome
+
+    pdebug(utilities.CONFIGURATION)
 
     my_sid = connection.first_identity
     if not my_sid:
@@ -127,3 +129,4 @@ def server_listen_dtn():
                         start_new_thread(server_handle_call, (potential_call, rhiz, my_sid))
 
         time.sleep(1)
+#
