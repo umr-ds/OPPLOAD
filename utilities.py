@@ -36,12 +36,18 @@ def config_files_present():
         return False
     return True
 
-def read_config():
+def read_config(path):
     global CONFIGURATION
-    with open('rpc.conf', 'r') as rpc_conf:
-        for conf in rpc_conf:
-            conf_list = conf.split('=')
-            CONFIGURATION[conf_list[0].rstrip()] = conf_list[1].rstrip()
+    try:
+        with open(path, 'r') as rpc_conf:
+            for conf in rpc_conf:
+                conf_list = conf.split('=')
+                CONFIGURATION[conf_list[0].rstrip()] = conf_list[1].rstrip()
+            
+        return True
+    except FileNotFoundError:
+        pfatal('DTN-RPyC configuration file %s was not found. Aborting.' % path)
+        return False
 
 def make_bundle(manifest_props):
     bundle = rhizome.Bundle()
