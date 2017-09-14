@@ -24,6 +24,7 @@ CALL        = '0'
 ACK         = '1'
 RESULT      = '2'
 ERROR       = '3'
+CLEANUP     = '4'
 
 CONFIGURATION = {}
 

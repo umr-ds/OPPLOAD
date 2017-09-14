@@ -3,7 +3,7 @@ import time
 import restful
 import rhizome
 import utilities
-from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT, ERROR
+from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT, ERROR, CLEANUP
 
 def rpc_for_me(potential_result, name, args, sid):
     return potential_result.name == name \
@@ -46,15 +46,22 @@ def client_call_dtn(server, name, params):
                         if potential_result.type == ACK:
                             pinfo('Received ACK. Will wait for result.')
                         if potential_result.type == RESULT:
+                            result_str = ''
                             if potential_result.result == 'file':
                                 path = '/tmp/%s_%s' % (name, potential_result.version)
                                 rhiz.get_decrypted_to_file(potential_result.id, path)
-                                pinfo('Received result: %s' % path)
+                                result_str = path
                             else:
-                                pinfo('Received result: %s' % potential_result.result)
+                                result_str = potential_result.result
+
+                            clear_bundle = utilities.make_bundle([('type', CLEANUP), ('name', name), ('args', args), ('sender', my_sid.sid), ('recipient', server)], True)
+                            rhiz.insert(clear_bundle, '', my_sid.sid, call_bundle.id)
+                            pinfo('Received result: %s' % result_str)
                             result_received = True
+
                         if potential_result.type == ERROR:
                             pfatal('Received error response with the following message: %s' % potential_result.result)
                             result_received = True
 
         time.sleep(1)
+#

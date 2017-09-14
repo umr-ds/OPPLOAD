@@ -7,12 +7,14 @@ from _thread import start_new_thread
 import utilities
 import restful
 import rhizome
-from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT, ERROR
+from utilities import pdebug, pfatal, pinfo, pwarn, CALL, ACK, RESULT, ERROR, CLEANUP
 
 RUNNING = True
 STOPPED = False
 server_mode = STOPPED
 OFFERED_PROCEDURES = None
+
+CLEANUP_BUNDLES = {}
 
 class Procedure():
     def __init__(self, return_type=None, name=None, args=None):
@@ -81,16 +83,27 @@ def server_handle_call(potential_call, rhiz, my_sid):
             error_bundle = utilities.make_bundle([('type', ERROR), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender), ('args', potential_call.args)], True)
             rhiz.insert(error_bundle, '', my_sid.sid, ack_bundle.id)
             return
-            
+
         if procedure.return_type == 'file':
             result_bundle = utilities.make_bundle([('type', RESULT), ('result', 'file'), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender), ('args', potential_call.args)], True)
             rhiz.insert(result_bundle, open(result.decode('utf-8'), 'rb'), my_sid.sid, ack_bundle.id)
             pinfo('Result was sent. Call successufull, waiting for next procedure.')
+
+            CLEANUP_BUNDLES[potential_call.id] = ack_bundle.id
         else:
             result_bundle = utilities.make_bundle([('type', RESULT), ('result', result), ('name', potential_call.name), ('sender', potential_call.recipient), ('recipient', potential_call.sender), ('args', potential_call.args)], True)
             rhiz.insert(result_bundle, '', my_sid.sid, ack_bundle.id)
             pinfo('Result was sent. Call successufull, waiting for next procedure.')
     
+
+def server_cleanup_store(bundle, sid, rhiz):
+    try:
+        clear_bundle = utilities.make_bundle([('type', CLEANUP)], True)
+        result_bundle_id = CLEANUP_BUNDLES[bundle.id]
+        rhiz.insert(clear_bundle, '', sid, result_bundle_id)
+        del CLEANUP_BUNDLES[bundle.id]
+    except KeyError as e:
+        return
 
 def server_listen_dtn():
     global OFFERED_PROCEDURES
@@ -100,8 +113,6 @@ def server_listen_dtn():
 
     connection = restful.RestfulConnection(host=utilities.CONFIGURATION['host'], port=int(utilities.CONFIGURATION['port']), user=utilities.CONFIGURATION['user'], passwd=utilities.CONFIGURATION['passwd'])
     rhiz = connection.rhizome
-
-    pdebug(utilities.CONFIGURATION)
 
     my_sid = connection.first_identity
     if not my_sid:
@@ -127,6 +138,7 @@ def server_listen_dtn():
 
                     if potential_call.type == CALL:
                         start_new_thread(server_handle_call, (potential_call, rhiz, my_sid))
+                    elif potential_call.type == CLEANUP:
+                        server_cleanup_store(potential_call, my_sid.sid, rhiz)
 
         time.sleep(1)
-#
