@@ -15,22 +15,22 @@ DEBUG = '\033[1m\033[34mDEBUG: \033[0m\033[34m' # Blue
 def pdebug(string_to_print):
     '''Prints string_to_print in blue to stdout.
     '''
-    print DEBUG + str(string_to_print) + RESET
+    print(DEBUG + str(string_to_print) + RESET)
 
 def pfatal(string_to_print):
     '''Prints string_to_print in red to stdout.
     '''
-    print FATAL + str(string_to_print) + RESET
+    print(FATAL + str(string_to_print) + RESET)
 
 def pinfo(string_to_print):
     '''Prints string_to_print in green to stdout.
     '''
-    print INFO + str(string_to_print) + RESET
+    print(INFO + str(string_to_print) + RESET)
 
 def pwarn(string_to_print):
     '''Prints string_to_print in yellow to stdout.
     '''
-    print WARN + str(string_to_print) + RESET
+    print(WARN + str(string_to_print) + RESET)
 
 # Type definitions for DTN-RPC protocol header.
 CALL = '0'
