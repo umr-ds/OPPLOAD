@@ -19,7 +19,7 @@ class Bundle(object):
         self.__dict__.update(manifest_parsed)
 
     def __repr__(self):
-        return 'Bundle(id={}, name=\'%s\')' % (self.id, self.name)
+        return 'Bundle(id=%s, name=\'%s\')' % (self.id, self.name)
 
     def __str__(self):
         if hasattr(self, 'service'): prefix = self.service
