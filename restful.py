@@ -12,9 +12,9 @@ class RestfulConnection(object):
         user (str):     Username for the RESTful Server
         passwd (str):   Password fpr the RESTful Server
     '''
-    def __init__(self, host="localhost", port=4110, user="pyserval", passwd="pyserval"):
+    def __init__(self, host='localhost', port=4110, user='pyserval', passwd='pyserval'):
         self._auth = (user, passwd)
-        self._base = "http://{}:{}".format(host, port)
+        self._base = 'http://%s:%s' % (host, port)
 
         self.keyring = keyring.Keyring(self)
         self.rhizome = rhizome.Rhizome(self)
@@ -47,4 +47,4 @@ class RestfulConnection(object):
         return request
 
     def __repr__(self):
-        return "RestfulConnection(\"{}, {}\")".format(self._base, self._auth)
+        return 'RestfulConnection(\'%s, %s\')' % (self._base, self._auth)

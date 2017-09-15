@@ -66,7 +66,7 @@ def server_offering_procedure(procedure):
             and len(offered_procedure.args) == len(procedure.args):
 
             procedure.return_type = offered_procedure.return_type
-            bin_path = "%s/%s" % (utilities.CONFIGURATION['bins'], procedure.name)
+            bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
             if not os.path.exists(bin_path) or not os.access(bin_path, os.X_OK):
                 pwarn('Server is offering procedure \'%s\', ' \
                         'but it seems the binary %s/%s is not present or it is not executable. ' \

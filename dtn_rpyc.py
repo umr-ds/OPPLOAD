@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
 # -*- coding: utf-8 -*-
-"""Main module for DTN-RPyC
+'''Main module for DTN-RPyC
 
 This module contains the argument parser and will call start the server
 or call a procedure using the client code.
 
 Example:
     For examples visit our Github page.
-"""
+'''
 
 import argparse
 import sys
@@ -96,7 +96,7 @@ class DTNRPyC(object):
             sys.exit(1)
         pre_exec_checks(True)
 
-        utilities.pinfo("Starting server in DTN mode.")
+        utilities.pinfo('Starting server in DTN mode.')
         server.server_listen_dtn()
 
     def call(self):
@@ -161,7 +161,7 @@ class DTNRPyC(object):
             sys.exit(1)
         pre_exec_checks(False)
 
-        utilities.pinfo("Calling procedure \'%s\' in DTN mode." % args.name)
+        utilities.pinfo('Calling procedure \'%s\' in DTN mode.' % args.name)
         client.client_call_dtn(args.server, args.name, args.arguments)
 
 def pre_exec_checks(server_checks):

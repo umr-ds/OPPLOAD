@@ -11,17 +11,17 @@ class ServalIdentity(object):
         name (str):         A optional human-readabel name for the identity.
         identity (str):     Identity idetifyier.
     '''
-    def __init__(self, _keyring, sid, did="", name="", identity=""):
+    def __init__(self, _keyring, sid, did='', name='', identity=''):
         self.sid = sid
-        self.__dict__["did"] = did
-        self.__dict__["name"] = name
+        self.__dict__['did'] = did
+        self.__dict__['name'] = name
         self.identity = identity
         self._keyring = _keyring
 
     def __repr__(self):
         ''' Returns a print ready Identity string.
         '''
-        return "ServalIdentity(sid={}, did=\"{}\", name=\"{}\")" .format(
+        return 'ServalIdentity(sid=%s, did=\'%s\', name=\'%s\')' % (
             self.sid, self.did, self.name
         )
 
@@ -35,10 +35,10 @@ class ServalIdentity(object):
             return self.name
 
         if self.did:
-            return "did:{}".format(str(self.did))
+            return 'did:%s' % str(self.did)
 
         else:
-            return "{}*".format(self.sid[:16])
+            return '%s*' % self.sid[:16]
 
     def refresh(self):
         ''' Refreshed the identities from Serval Keyring.
@@ -54,10 +54,10 @@ class ServalIdentity(object):
         Returns a new ServalIdentity intance without the removed identity.
         '''
         request_json = self._keyring._connection.get(
-            "/restful/keyring/{}/remove".format(self.sid)
+            '/restful/keyring/%s/remove' % self.sid
         ).json()
 
-        return ServalIdentity(self._keyring, **request_json["identity"])
+        return ServalIdentity(self._keyring, **request_json['identity'])
 
     # GET /restful/keyring/SID/set
     def set(self, did=None, name=None):
@@ -75,17 +75,17 @@ class ServalIdentity(object):
             ServalIdentity: The ServalIdentity with the newly set DID and name.
         '''
 
-        params = {"did":self.did, "name":self.name}
+        params = {'did':self.did, 'name':self.name}
 
         if did:
-            params["did"] = did
+            params['did'] = did
         if name:
-            params["name"] = name
+            params['name'] = name
 
         request_json = self._keyring._connection.get(
-            "/restful/keyring/{}/set".format(self.sid), params=params
+            '/restful/keyring/%s/set' % self.sid, params=params
         ).json()
-        self.__dict__.update(request_json["identity"])
+        self.__dict__.update(request_json['identity'])
 
         return self
 
@@ -103,11 +103,11 @@ class Keyring(object):
         Returns:
             ServalIdentitity: A list of all gathered Serval Identities from Keyring.
         '''
-        identities_json = self._connection.get("/restful/keyring/identities.json").json()
+        identities_json = self._connection.get('/restful/keyring/identities.json').json()
         identities = []
 
-        for row in identities_json["rows"]:
-            identities.append(ServalIdentity(self, **dict(zip(identities_json["header"], row))))
+        for row in identities_json['rows']:
+            identities.append(ServalIdentity(self, **dict(zip(identities_json['header'], row))))
 
         return identities
 
@@ -127,5 +127,5 @@ class Keyring(object):
         Returns:
             ServalIdentity: The newly to the Keyring added identity.
         '''
-        request_json = self._connection.get("/restful/keyring/add").json()
-        return ServalIdentity(self, **request_json["identity"])
+        request_json = self._connection.get('/restful/keyring/add').json()
+        return ServalIdentity(self, **request_json['identity'])

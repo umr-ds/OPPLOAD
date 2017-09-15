@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""DTN-RPyC client.
+'''DTN-RPyC client.
 
 This module contains all functions needed by the DTN-RPyC client, especially
 the call functions.
-"""
+'''
 
 import time
 
@@ -13,7 +13,7 @@ from utilities import pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP
 
 
 def rpc_for_me(potential_result, name, args, sid):
-    """ Helper function to decide if the received RPC result is for the client.
+    ''' Helper function to decide if the received RPC result is for the client.
 
     Args:
         potential_result (bundle):  The bundle which has to be checked.
@@ -23,19 +23,19 @@ def rpc_for_me(potential_result, name, args, sid):
 
     Returns:
         bool: The return value. True for success, False otherwise.
-    """
+    '''
     return potential_result.name == name \
         and potential_result.args == args \
         and potential_result.recipient == sid
 
 def client_call_dtn(server, name, args):
-    """ Main calling function for DTN mode.
+    ''' Main calling function for DTN mode.
 
     Args:
         server (str):           Hex representation of the server.
         name (str):             Name of the desired procedure.
         args (list of strings): Arguments of the desired procedure.
-    """
+    '''
 
     # Create a RESTful connection to Serval with the parameters from the config file
     # and get the Rhizome connection.
