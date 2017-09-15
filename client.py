@@ -9,7 +9,7 @@ import time
 
 import restful
 import utilities
-from utilities import pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP
+from utilities import pdebug, pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP
 
 
 def rpc_for_me(potential_result, name, args, sid):
@@ -27,6 +27,36 @@ def rpc_for_me(potential_result, name, args, sid):
     return potential_result.name == name \
         and potential_result.args == args \
         and potential_result.recipient == sid
+
+def client_find_server(rhiz, name, args):
+    '''Searches a server, which offers the desired procedure.
+    Args:
+        rhiz (Rhizome):     Rhizome connection to Serval
+        name (str):         The name of the desired procedure
+        args (list(str)):   All arguments of the procedure in a list.
+
+    Returns:
+        str: SID of the server or None, if not found.
+    '''
+
+    # If there are no bundles, the are no servers offering anything. Abort.
+    bundles = rhiz.get_bundlelist()
+    if not bundles:
+        return None
+
+    for bundle in bundles:
+        if not bundle.service == 'RPC_OFFER':
+            continue
+        # We found an offer bundle. Therefore download the content...
+        offers = rhiz.get_decrypted(bundle.id).split('\n')
+
+        # ... iterate over the lines and see if this is the procedure we searching for.
+        for offer in offers:
+            procedure = offer.split(' ')
+            if procedure[1] == name and len(procedure[2:]) == len(args):
+                return bundle.name
+
+    return None
 
 def client_call_dtn(server, name, args):
     ''' Main calling function for DTN mode.
@@ -59,6 +89,13 @@ def client_call_dtn(server, name, args):
         return
 
     pinfo('Calling procedure \'%s\'.' % name)
+
+    # If the server address is 'any', we have to find a server, which offers this procedure.
+    if server == 'any':
+        server = client_find_server(rhiz, name, args)
+        if not server:
+            pfatal('Could not find any server offering the procedure. Aborting.')
+            return
 
     # The server expects the arguments in a single string delimited with '|'.
     joined_args = '|'.join(args)

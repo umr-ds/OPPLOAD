@@ -8,7 +8,7 @@ from _thread import start_new_thread
 import restful
 
 import utilities
-from utilities import pinfo, pfatal, pwarn
+from utilities import pdebug, pinfo, pfatal, pwarn
 from utilities import ACK, CALL, CLEANUP, ERROR, RESULT
 
 # Status indicators for the server
@@ -33,6 +33,23 @@ class Procedure(object):
         self.return_type = return_type
         self.name = name
         self.args = args
+
+    def __str__(self):
+        return '%s %s %s' % (self.return_type, self.name, ' '.join(self.args))
+
+def server_publish_procedures(rhiz, my_sid):
+    '''Publishes all offered procedures.
+    '''
+    payload = ''
+    for procedure in OFFERED_PROCEDURES:
+        procedure_str = str(procedure)
+        payload = payload + procedure_str
+
+    publish_bundle = utilities.make_bundle([
+        ('service', 'RPC_OFFER'),
+        ('name', my_sid)
+    ], rpc_service=False)
+    rhiz.insert(publish_bundle, payload, my_sid)
 
 def get_offered_procedures(rpc_defs):
     '''Parses the rpc definitions file and stores all of them in a list.
@@ -99,7 +116,7 @@ def server_execute_procedure(procedure):
     '''
     pinfo('Starting execution of \'%s\'.' % procedure.name)
 
-    bin_path = os.getcwd() + '/' + utilities.CONFIGURATION['bins'] + '/%s %s'
+    bin_path = utilities.CONFIGURATION['bins'] + '/%s %s'
     procedure_process = subprocess.Popen(
         bin_path % (procedure.name, ' '.join(procedure.args)), shell=True, stdout=subprocess.PIPE
     )
@@ -224,16 +241,14 @@ def server_listen_dtn():
               )
         return
 
+    # At this point we can publish all offered procedures.
+    server_publish_procedures(rhiz, my_sid.sid)
+
     pinfo('Server address: %s' % my_sid.sid)
 
-    # See if there are files in the store.
-    # If the store is empty, we will start listening on the empty store.
-    # Otherwise, we will ignore files before token.
-    token = None
-    try:
-        token = rhiz.get_bundlelist()[0].__dict__['.token']
-    except IndexError:
-        pwarn('Rhizome store is empty.')
+    # Immediatelly after publishing the offered procedures,
+    # get the token from the store, to not parse the entire bundlelist.
+    token = rhiz.get_bundlelist()[0].__dict__['.token']
 
     while SERVER_MODE:
         bundles = rhiz.get_bundlelist(token=token)

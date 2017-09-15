@@ -123,7 +123,7 @@ class Rhizome(object):
             multipart.append(('bundle-id', bid))
 
         multipart.append(('manifest', ('manifest1', manifest_file, \
-            'rhizome/manifest;format=\'text+binarysig\'')))
+            'rhizome/manifest;format="text+binarysig"')))
         multipart.append(('payload', ('file1', payload)))
 
         manifest_request = self._connection.post('/restful/rhizome/insert', files=multipart)
