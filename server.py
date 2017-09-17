@@ -143,14 +143,17 @@ def server_execute_procedure(procedure):
 
     bin_path = utilities.CONFIGURATION['bins'] + '/%s %s'
     procedure_process = subprocess.Popen(
-        bin_path % (procedure.name, ' '.join(procedure.args)), shell=True, stdout=subprocess.PIPE
+        bin_path % (procedure.name, ' '.join(procedure.args)),
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
     )
-    out, _ = procedure_process.communicate()
+    out, err = procedure_process.communicate()
 
     if procedure_process.returncode != 0:
         pwarn('Execution of \'%s\' was not successfull. Will return error %s' \
-            % (procedure.name, out))
-        return (1, out)
+            % (procedure.name, err))
+        return (1, err.rstrip())
     else:
         pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
         return (0, out.rstrip())

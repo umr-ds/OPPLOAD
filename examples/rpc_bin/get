@@ -2,7 +2,7 @@
 
 if [ $1 -lt 1 ]
 then
-    echo "Size to small."
+    echo "Size to small." 1>&2
     exit 1
 fi
 
