@@ -3,6 +3,7 @@
 import time
 import subprocess
 import os
+import threading
 from _thread import start_new_thread
 
 import restful
@@ -10,6 +11,9 @@ import restful
 import utilities
 from utilities import pdebug, pinfo, pfatal, pwarn
 from utilities import ACK, CALL, CLEANUP, ERROR, RESULT
+
+# A threading lock for critical parts like updating offered procedures.
+LOCK = threading.RLock()
 
 # Status indicators for the server
 RUNNING = True
@@ -21,6 +25,9 @@ OFFERED_PROCEDURES = None
 
 # A dict where all bundles are stored which have to be cleaned up after execution.
 CLEANUP_BUNDLES = {}
+
+# The ID for the publish bundle.
+PUBLISH_BUNDLE_ID = None
 
 class Procedure(object):
     '''A simple procedure class.
@@ -40,16 +47,28 @@ class Procedure(object):
 def server_publish_procedures(rhiz, my_sid):
     '''Publishes all offered procedures.
     '''
-    payload = ''
-    for procedure in OFFERED_PROCEDURES:
-        procedure_str = str(procedure)
-        payload = payload + procedure_str
+    update_published_thread = threading.Timer(30, server_publish_procedures, (rhiz, my_sid))
+    update_published_thread.daemon = True
+    update_published_thread.start()
 
-    publish_bundle = utilities.make_bundle([
-        ('service', 'RPC_OFFER'),
-        ('name', my_sid)
-    ], rpc_service=False)
-    rhiz.insert(publish_bundle, payload, my_sid)
+    global PUBLISH_BUNDLE_ID
+
+    payload = ''
+    with LOCK:
+        for procedure in OFFERED_PROCEDURES:
+            procedure_str = str(procedure)
+            payload = payload + procedure_str
+
+        publish_bundle = utilities.make_bundle([
+            ('service', 'RPC_OFFER'),
+            ('name', my_sid)
+        ], rpc_service=False)
+
+        if PUBLISH_BUNDLE_ID:
+            rhiz.insert(publish_bundle, payload, my_sid, PUBLISH_BUNDLE_ID)
+        else:
+            rhiz.insert(publish_bundle, payload, my_sid)
+            PUBLISH_BUNDLE_ID = publish_bundle.id
 
 def get_offered_procedures(rpc_defs):
     '''Parses the rpc definitions file and stores all of them in a list.
@@ -59,16 +78,20 @@ def get_offered_procedures(rpc_defs):
     Returns:
         list(Procedure): A list of parsed Procedures.
     '''
-    offered_procedures = []
-    with open(rpc_defs, 'r') as conf_file:
-        for procedure_definition in conf_file:
-            procedure_definition_list = procedure_definition.split(' ')
-            return_type = procedure_definition_list[0]
-            name = procedure_definition_list[1]
-            args = procedure_definition_list[2:]
-            offered_procedures.append(Procedure(return_type=return_type, name=name, args=args))
+    update_offers_thread = threading.Timer(30, get_offered_procedures, (rpc_defs, ))
+    update_offers_thread.daemon = True
+    update_offers_thread.start()
 
-    return offered_procedures
+    global OFFERED_PROCEDURES
+    with LOCK:
+        OFFERED_PROCEDURES = set()
+        with open(rpc_defs, 'r') as conf_file:
+            for procedure_definition in conf_file:
+                procedure_definition_list = procedure_definition.split(' ')
+                return_type = procedure_definition_list[0]
+                name = procedure_definition_list[1]
+                args = procedure_definition_list[2:]
+                OFFERED_PROCEDURES.add(Procedure(return_type=return_type, name=name, args=args))
 
 def server_offering_procedure(procedure):
     '''Checks, if the given procedure is offered by the server.
@@ -78,23 +101,25 @@ def server_offering_procedure(procedure):
     Returns:
         bool: True, if the procedure is offered, false otherwise.
     '''
-    for offered_procedure in OFFERED_PROCEDURES:
-        if offered_procedure.name == procedure.name \
-            and len(offered_procedure.args) == len(procedure.args):
+    with LOCK:
+        for offered_procedure in OFFERED_PROCEDURES:
+            if offered_procedure.name == procedure.name \
+                and len(offered_procedure.args) == len(procedure.args):
 
-            procedure.return_type = offered_procedure.return_type
-            bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
-            if not os.path.exists(bin_path) or not os.access(bin_path, os.X_OK):
-                pwarn('Server is offering procedure \'%s\', ' \
-                        'but it seems the binary %s/%s is not present or it is not executable. ' \
-                        'Will not try to execute.' \
-                        % (procedure.name, utilities.CONFIGURATION['bins'], procedure.name)
-                     )
-                return False
-            pinfo('Offering procedure \'%s\'.' % procedure.name)
-            return True
-    pwarn('Not offering procedure \'%s\'. Waiting for next call.' % procedure.name)
-    return False
+                procedure.return_type = offered_procedure.return_type
+                bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
+                if not os.path.exists(bin_path) or not os.access(bin_path, os.X_OK):
+                    pwarn('Server is offering procedure \'%s\', ' \
+                            'but it seems the binary %s/%s is not present' \
+                            'or it is not executable. ' \
+                            'Will not try to execute.' \
+                            % (procedure.name, utilities.CONFIGURATION['bins'], procedure.name)
+                         )
+                    return False
+                pinfo('Offering procedure \'%s\'.' % procedure.name)
+                return True
+        pwarn('Not offering procedure \'%s\'. Waiting for next call.' % procedure.name)
+        return False
 
 def server_parse_call(call):
     '''Parse the incomming call.
@@ -231,8 +256,9 @@ def server_cleanup_store(bundle, sid, rhiz):
 def server_listen_dtn():
     '''Main listening function.
     '''
-    global OFFERED_PROCEDURES, SERVER_MODE
-    OFFERED_PROCEDURES = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
+    get_offered_procedures(utilities.CONFIGURATION['rpcs'])
+
+    global SERVER_MODE
     SERVER_MODE = RUNNING
 
     # Create a RESTful connection to Serval with the parameters from the config file
