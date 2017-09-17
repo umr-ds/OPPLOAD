@@ -22,8 +22,10 @@ class Bundle(object):
         return 'Bundle(id=%s, name=\'%s\')' % (self.id, self.name)
 
     def __str__(self):
-        if hasattr(self, 'service'): prefix = self.service
-        else: prefix = ''
+        if hasattr(self, 'service'):
+            prefix = self.service
+        else:
+            prefix = ''
         if hasattr(self, 'name') and self.name:
             return '%s:%s' % (prefix, self.name)
 
