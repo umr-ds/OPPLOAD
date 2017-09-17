@@ -88,8 +88,6 @@ def client_call_dtn(server, name, args):
         )
         return
 
-    pinfo('Calling procedure \'%s\'.' % name)
-
     # If the server address is 'any', we have to find a server, which offers this procedure.
     if server == 'any':
         server = client_find_server(rhiz, name, args)
