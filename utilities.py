@@ -1,6 +1,7 @@
 '''Contains helper functions and variables.
 '''
 import os
+import string
 import requests
 import restful
 import rhizome
@@ -118,3 +119,18 @@ def serval_running():
         else:
             pfatal('An error occured. Aborting. : %s' % http_error)
     return False
+
+def is_server_address(sid):
+    '''Simple function to check if a SID is realy a SID.
+    Args:
+        sid (str):  The string to check.
+
+    Returns:
+        bool: If the SID is a SID or 64 hex chars or not.
+    '''
+    if sid == 'any' or (all(hex_char in string.hexdigits for hex_char in sid) and len(sid) == 64):
+        return True
+
+    pfatal('%s is not a valid server address. Aborting.' % sid)
+    return False
+#

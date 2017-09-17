@@ -157,7 +157,7 @@ class DTNRPyC(object):
 
         # Before calling the procedure, check, if the config file can be parsed
         # and do some other checks.
-        if not utilities.read_config(args.config):
+        if not utilities.read_config(args.config) or not utilities.is_server_address(args.server):
             sys.exit(1)
         pre_exec_checks(False)
 
