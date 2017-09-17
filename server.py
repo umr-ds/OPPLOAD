@@ -183,7 +183,7 @@ def server_handle_call(potential_call, rhiz, my_sid):
         ack_bundle = utilities.make_bundle([
             ('type', ACK),
             ('name', potential_call.name),
-            ('sender', potential_call.recipient),
+            ('sender', my_sid.sid),
             ('recipient', potential_call.sender),
             ('args', potential_call.args)])
         rhiz.insert(ack_bundle, '', my_sid.sid)
@@ -197,7 +197,7 @@ def server_handle_call(potential_call, rhiz, my_sid):
         # and send the bundle and payload at the end.
         result_bundle_values = [
             ('name', potential_call.name),
-            ('sender', potential_call.recipient),
+            ('sender', my_sid.sid),
             ('recipient', potential_call.sender),
             ('args', potential_call.args)
         ]
@@ -213,7 +213,7 @@ def server_handle_call(potential_call, rhiz, my_sid):
             payload = open(result.decode('utf-8'), 'rb')
             # This is the only case, where we have to remember the bundle id for cleanup later on.
             CLEANUP_BUNDLES[potential_call.id] = ack_bundle.id
-            pinfo('Result was sent. Call successufull, waiting for next procedure.')
+            pinfo('Result was sent. Call successufull, waiting for next procedure.\n')
 
         # This is the most simple case. Just return the result.
         else:
@@ -229,7 +229,7 @@ def server_handle_call(potential_call, rhiz, my_sid):
         # Therefore, the client will be informed with an error.
         result_bundle_values = [
             ('name', potential_call.name),
-            ('sender', potential_call.recipient),
+            ('sender', my_sid.sid),
             ('recipient', potential_call.sender),
             ('args', potential_call.args),
             ('type', ERROR),

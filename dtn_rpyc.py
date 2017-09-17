@@ -70,23 +70,17 @@ class DTNRPyC(object):
             help='... in DTN mode.'
         )
         group.add_argument(
-            '-b',
-            '--broadcast',
-            action='store_true',
-            help='... in broadast mode.'
-        )
-        group.add_argument(
             '-p',
             '--peer',
             action='store_true',
             help='... in direct peer mode.'
         )
+
         group.add_argument(
             '-f',
             '--config',
             help='Configuration file',
             default='rpc.conf')
-
 
         args = parser.parse_args(sys.argv[2:])
 
@@ -116,12 +110,6 @@ class DTNRPyC(object):
             help='... in DTN mode.'
         )
         group.add_argument(
-            '-b',
-            '--broadcast',
-            action='store_true',
-            help='... in broadast mode.'
-        )
-        group.add_argument(
             '-p',
             '--peer',
             action='store_true',
@@ -146,6 +134,7 @@ class DTNRPyC(object):
             help='List of parameters',
             nargs='*'
         )
+
         group.add_argument(
             '-f',
             '--config',

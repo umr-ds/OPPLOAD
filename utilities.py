@@ -128,9 +128,11 @@ def is_server_address(sid):
     Returns:
         bool: If the SID is a SID or 64 hex chars or not.
     '''
-    if sid == 'any' or (all(hex_char in string.hexdigits for hex_char in sid) and len(sid) == 64):
+    if sid == 'any' \
+        or sid == 'all' \
+        or sid == 'broadcast' \
+        or (all(hex_char in string.hexdigits for hex_char in sid) and len(sid) == 64):
         return True
 
     pfatal('%s is not a valid server address. Aborting.' % sid)
     return False
-#

@@ -98,13 +98,20 @@ def client_call_dtn(server, name, args):
     # The server expects the arguments in a single string delimited with '|'.
     joined_args = '|'.join(args)
 
-    # Prepare the call bundle...
-    call_bundle = utilities.make_bundle([
+    # Prepare the call bundle
+    call_bundle_fields = [
         ('type', CALL),
         ('name', name),
         ('args', joined_args),
-        ('sender', my_sid.sid),
-        ('recipient', server)])
+        ('sender', my_sid.sid)
+    ]
+
+    # If this is an 'all' or 'broadcast' call, we must not provide sender and recipient.
+    if not server == 'all' and not server == 'broadcast':
+        call_bundle_fields.append(('recipient', server))
+
+    # Now the callbundle can be build.
+    call_bundle = utilities.make_bundle(call_bundle_fields)
 
     # ... and the payload. By convention, if the first argument is 'file' and
     # there are exactly two arguments, we assume that the second argument
@@ -172,11 +179,16 @@ def client_call_dtn(server, name, args):
                         ('type', CLEANUP),
                         ('name', name),
                         ('args', args),
-                        ('sender', my_sid.sid),
-                        ('recipient', server)])
+                        ('sender', my_sid.sid)
+                    ])
                     rhiz.insert(clear_bundle, '', my_sid.sid, call_bundle.id)
 
                     pinfo('Received result: %s' % result_str)
+
+                    # If the call was broadcastet, we do not want to stop here.
+                    if server == 'all' or server == 'broadcast':
+                        continue
+
                     result_received = True
 
                 if potential_result.type == ERROR:
@@ -184,6 +196,11 @@ def client_call_dtn(server, name, args):
                         'Received error response with the following message: %s' \
                         % potential_result.result
                     )
+
+                    # If the call was broadcastet, we do not want to stop here.
+                    if server == 'all' or server == 'broadcast':
+                        continue
+
                     result_received = True
 
         time.sleep(1)
