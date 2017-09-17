@@ -195,6 +195,20 @@ def server_handle_call(potential_call, rhiz, my_sid):
         result_bundle = utilities.make_bundle(result_bundle_values)
         rhiz.insert(result_bundle, payload, my_sid.sid, ack_bundle.id)
 
+    else:
+        # In this case, the server does not offer the procedure.
+        # Therefore, the client will be informed with an error.
+        result_bundle_values = [
+            ('name', potential_call.name),
+            ('sender', potential_call.recipient),
+            ('recipient', potential_call.sender),
+            ('args', potential_call.args),
+            ('type', ERROR),
+            ('result', 'Server does not offer procedure.')
+        ]
+        result_bundle = utilities.make_bundle(result_bundle_values)
+        rhiz.insert(result_bundle, '', my_sid.sid)
+
 def server_cleanup_store(bundle, sid, rhiz):
     '''Cleans up all bundles involved in a call
     Args:
