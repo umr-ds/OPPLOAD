@@ -175,7 +175,7 @@ def pre_exec_checks(server_checks):
     if not utilities.serval_running():
         sys.exit(1)
 
-def signal_handler():
+def signal_handler(_, __):
     ''' Just a simple CTRL-C handler.
     '''
     utilities.pwarn('Stopping DTN-RPyC.')
