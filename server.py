@@ -108,6 +108,7 @@ def server_offering_procedure(procedure):
 
                 procedure.return_type = offered_procedure.return_type
                 bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
+
                 if not os.path.exists(bin_path) or not os.access(bin_path, os.X_OK):
                     pwarn('Server is offering procedure \'%s\', ' \
                             'but it seems the binary %s/%s is not present' \
@@ -151,7 +152,7 @@ def server_execute_procedure(procedure):
     out, err = procedure_process.communicate()
 
     if procedure_process.returncode != 0:
-        pwarn('Execution of \'%s\' was not successfull. Will return error %s' \
+        pwarn('Execution of \'%s\' was not successfull. Will return error %s\n' \
             % (procedure.name, err))
         return (1, err.rstrip())
     else:
@@ -300,16 +301,18 @@ def server_listen_dtn():
                 # The first bundle is the most recent. Therefore, we have to save the new token.
                 token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
 
-                if bundle.service == 'RPC':
-                    # At this point, we have an call and have to start handling it.
-                    # Therefore, we download the manifest.
-                    potential_call = rhiz.get_manifest(bundle.id)
+                if not bundle.service == 'RPC':
+                    continue
 
-                    # If the bundle is a call, we start a handler thread.
-                    if potential_call.type == CALL:
-                        start_new_thread(server_handle_call, (potential_call, rhiz, my_sid))
-                    # If the bundle is a cleanup file, we start the cleanup routine.
-                    elif potential_call.type == CLEANUP:
-                        server_cleanup_store(potential_call, my_sid.sid, rhiz)
+                # At this point, we have an call and have to start handling it.
+                # Therefore, we download the manifest.
+                potential_call = rhiz.get_manifest(bundle.id)
+
+                # If the bundle is a call, we start a handler thread.
+                if potential_call.type == CALL:
+                    start_new_thread(server_handle_call, (potential_call, rhiz, my_sid))
+                # If the bundle is a cleanup file, we start the cleanup routine.
+                elif potential_call.type == CLEANUP:
+                    server_cleanup_store(potential_call, my_sid.sid, rhiz)
 
         time.sleep(1)

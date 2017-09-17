@@ -132,54 +132,58 @@ def client_call_dtn(server, name, args):
                 # The first bundle is the most recent. Therefore, we have to save the new token.
                 token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
 
-                if bundle.service == 'RPC':
-                    potential_result = rhiz.get_manifest(bundle.id)
+                if not bundle.service == 'RPC':
+                    continue
 
-                    if rpc_for_me(potential_result, name, joined_args, my_sid.sid):
+                # Before further checks, we have to download the manifest
+                # to have all metadata available.
+                potential_result = rhiz.get_manifest(bundle.id)
 
-                        # At this point, we know that there is a RPC file in the store
-                        # and it is for us. Start parsing.
-                        if potential_result.type == ACK:
-                            pinfo('Received ACK. Will wait for result.')
+                if not rpc_for_me(potential_result, name, joined_args, my_sid.sid):
+                    continue
 
-                        if potential_result.type == RESULT:
+                # At this point, we know that there is a RPC file in the store
+                # and it is for us. Start parsing.
+                if potential_result.type == ACK:
+                    pinfo('Received ACK. Will wait for result.')
 
-                            # It is possible, that the result is a file.
-                            # Therefore, we have to check the result field in the bundle.
-                            # If it is a file, download it and return the path to the
-                            # downloaded file.
-                            # Otherwise, just return the result.
-                            result_str = ''
-                            if potential_result.result == 'file':
-                                path = '/tmp/%s_%s' % (name, potential_result.version)
-                                rhiz.get_decrypted_to_file(potential_result.id, path)
-                                result_str = path
-                            else:
-                                result_str = potential_result.result
+                if potential_result.type == RESULT:
+                    # It is possible, that the result is a file.
+                    # Therefore, we have to check the result field in the bundle.
+                    # If it is a file, download it and return the path to the
+                    # downloaded file.
+                    # Otherwise, just return the result.
+                    result_str = ''
+                    if potential_result.result == 'file':
+                        path = '/tmp/%s_%s' % (name, potential_result.version)
+                        rhiz.get_decrypted_to_file(potential_result.id, path)
+                        result_str = path
+                    else:
+                        result_str = potential_result.result
 
-                            # The final step is to clean up the store.
-                            # Therefore, we create a new bundle with an
-                            # empty payload and CLEANUP as the type.
-                            # Since the BID is the same as in the call,
-                            # the call bundle will be updated with an empty file.
-                            # This type will instruct the server to clean up
-                            # the files involved during this RPC.
-                            clear_bundle = utilities.make_bundle([
-                                ('type', CLEANUP),
-                                ('name', name),
-                                ('args', args),
-                                ('sender', my_sid.sid),
-                                ('recipient', server)])
-                            rhiz.insert(clear_bundle, '', my_sid.sid, call_bundle.id)
+                    # The final step is to clean up the store.
+                    # Therefore, we create a new bundle with an
+                    # empty payload and CLEANUP as the type.
+                    # Since the BID is the same as in the call,
+                    # the call bundle will be updated with an empty file.
+                    # This type will instruct the server to clean up
+                    # the files involved during this RPC.
+                    clear_bundle = utilities.make_bundle([
+                        ('type', CLEANUP),
+                        ('name', name),
+                        ('args', args),
+                        ('sender', my_sid.sid),
+                        ('recipient', server)])
+                    rhiz.insert(clear_bundle, '', my_sid.sid, call_bundle.id)
 
-                            pinfo('Received result: %s' % result_str)
-                            result_received = True
+                    pinfo('Received result: %s' % result_str)
+                    result_received = True
 
-                        if potential_result.type == ERROR:
-                            pfatal(
-                                'Received error response with the following message: %s' \
-                                % potential_result.result
-                            )
-                            result_received = True
+                if potential_result.type == ERROR:
+                    pfatal(
+                        'Received error response with the following message: %s' \
+                        % potential_result.result
+                    )
+                    result_received = True
 
         time.sleep(1)
