@@ -217,7 +217,7 @@ def server_handle_call(potential_call, rhiz, my_sid):
         # This is the most simple case. Just return the result.
         else:
             result_bundle_values = result_bundle_values + [('type', RESULT), ('result', result)]
-            pinfo('Result was sent. Call successufull, waiting for next procedure.')
+            pinfo('Result was sent. Call successufull, waiting for next procedure.\n')
 
         # The final step. Compile and insert the result bundle.
         result_bundle = utilities.make_bundle(result_bundle_values)
@@ -287,7 +287,7 @@ def server_listen_dtn():
     # At this point we can publish all offered procedures.
     server_publish_procedures(rhiz, my_sid.sid)
 
-    pinfo('Server address: %s' % my_sid.sid)
+    pdebug('Server address: %s' % my_sid.sid)
 
     # Immediatelly after publishing the offered procedures,
     # get the token from the store, to not parse the entire bundlelist.
