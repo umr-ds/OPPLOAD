@@ -48,11 +48,11 @@ host=<IP> # The IP where the Serval RESTful interface listens, typically localho
 port=<PORT> # The port where the Serval RESTful interface listens, typically 4110
 user=<RESTful USERNAME> # Username for the Serval RESTful interface, i.e. RPC from the example above
 passwd=<RESTful PASSWORD> # Password for the Serval RESTful interface, i.e. SRPC from the example above
-rpcs=<PATH/TO/RPC/DEFINITIONS> # Path to the RPC definitions file (see below for more information)
+rpcs=<PATH/TO/RPC/DEFINITIONS> # Path to the RPC definitions file (see for more information)
 bins=<PATH/TO/RPC/BINARIES> # Path to the RPC binaries (see below for more information)
 ```
 
-The configuration file can be where ever you want, but if it is not in `$PWD`, you have to provide an additional parameter (see Usage for more information).
+The configuration file can be where ever you want, but if it is not in `$PWD`, you have to provide an additional parameter (see [usage](#usage) for more information).
 
 ### RPC Definitions (server only)
 Furthermore, you will need a `rpc.defs` file, where the definitions for the offered procedures per server have to be. The file expects the following format:
@@ -126,6 +126,6 @@ optional arguments:
 
 Again, the arguments should be self explaining. You can again decide either DTN mode, peer mode (not implemented yet) or both, if neither `-p` nor `-d` is given. You have also to provide a path to the config file.
 
-**Note:** See "RPC binaries (server only)" section above!
+**Note:** See [RPC binaries (server only)](#rpc-binaries-server-only) section above!
 
 **Note:** It is only possible to receive and return one file per call. If more files should be returned, you have to pack them (e.g. `tar`). Furthermore, the `return_type` of the procedure has to be `file` to instruct the server to return the path in the result as a file.
