@@ -218,7 +218,7 @@ def server_handle_call(potential_call, rhiz, my_sid):
         # This is the most simple case. Just return the result.
         else:
             result_bundle_values = result_bundle_values + [('type', RESULT), ('result', result)]
-            pinfo('Result was sent. Call successufull, waiting for next procedure.\n')
+            pinfo('Result was sent. Call successfull, waiting for next procedure.\n')
 
         # The final step. Compile and insert the result bundle.
         result_bundle = utilities.make_bundle(result_bundle_values)
