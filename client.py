@@ -28,7 +28,7 @@ def rpc_for_me(potential_result, name, args, sid):
         and potential_result.args == args \
         and potential_result.recipient == sid
 
-def client_find_server(rhiz, name, args):
+def client_find_server(rhiz, name, args, server = False):
     '''Searches a server, which offers the desired procedure.
     Args:
         rhiz (Rhizome):     Rhizome connection to Serval
@@ -43,7 +43,7 @@ def client_find_server(rhiz, name, args):
     bundles = rhiz.get_bundlelist()
     if not bundles:
         return None
-
+    server_list = []
     for bundle in bundles:
         if not bundle.service == 'RPC_OFFER':
             continue
@@ -53,10 +53,20 @@ def client_find_server(rhiz, name, args):
         # ... iterate over the lines and see if this is the procedure we searching for.
         for offer in offers:
             procedure = offer.split(' ')
+            if procedure[0] == '':
+               break
             if procedure[1] == name and len(procedure[2:]) == len(args):
-                return bundle.name
-
-    return None
+                if server:
+                    if bundle.name not in server_list:
+                        server_list.append(bundle.name)
+                else:
+                    return bundle.name
+            else:
+                continue
+    if len(server_list) > 0:
+        return server_list
+    else:
+        return None
 
 def client_call_dtn(server, name, args):
     ''' Main calling function for DTN mode.
@@ -109,7 +119,10 @@ def client_call_dtn(server, name, args):
     # If this is an 'all' or 'broadcast' call, we must not provide sender and recipient.
     if not server == 'all' and not server == 'broadcast':
         call_bundle_fields.append(('recipient', server))
-
+    # Find all servers which can execute the given procedure
+    else:
+        server_list = client_find_server(rhiz, name, args, True)
+        print(server_list)
     # Now the callbundle can be build.
     call_bundle = utilities.make_bundle(call_bundle_fields)
 
@@ -132,7 +145,8 @@ def client_call_dtn(server, name, args):
     # Start the waiting loop, until the result arrives.
     pinfo('Waiting for result.')
     result_received = False
-    while not result_received:
+    counter = 0
+    while not result_received or counter == len(server):
         bundles = rhiz.get_bundlelist(token=token)
         if bundles:
             for bundle in bundles:
@@ -187,6 +201,7 @@ def client_call_dtn(server, name, args):
 
                     # If the call was broadcastet, we do not want to stop here.
                     if server == 'all' or server == 'broadcast':
+                        counter = counter + 1
                         continue
 
                     result_received = True
