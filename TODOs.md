@@ -15,6 +15,7 @@
     - [ ] Also, use the cleanup as described in [technology overview](/technology.md)
 - [x] Publishing procedures
 - [ ] Publishing capabilities
+- [ ] Optional timeout functionality
 
 For more information, see:
 
