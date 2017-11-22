@@ -68,7 +68,6 @@ def client_find_server(rhiz, name, args, server = False):
     else:
         return None
 
-#@timeout()
 def client_call_dtn(server, name, args, timeout = None):
     ''' Main calling function for DTN mode.
 
