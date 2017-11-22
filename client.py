@@ -6,12 +6,12 @@ the call functions.
 '''
 
 import time
-
 import restful
 import utilities
 from utilities import pdebug, pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP
-
-
+import threading
+import sys
+import signal
 def rpc_for_me(potential_result, name, args, sid):
     ''' Helper function to decide if the received RPC result is for the client.
 
@@ -68,7 +68,8 @@ def client_find_server(rhiz, name, args, server = False):
     else:
         return None
 
-def client_call_dtn(server, name, args):
+#@timeout()
+def client_call_dtn(server, name, args, timeout = None):
     ''' Main calling function for DTN mode.
 
     Args:
@@ -143,13 +144,39 @@ def client_call_dtn(server, name, args):
     token = rhiz.get_bundlelist()[0].__dict__['.token']
 
     # Start the waiting loop, until the result arrives.
-    pinfo('Waiting for result.')
+    if timeout:
+        pinfo('Waiting for result for ' + timeout + " seconds.")
+    else:
+        pinfo('Waiting for result.')
     result_received = False
     counter = 0
-    while not result_received or counter == len(server):
+
+
+    global thread_expired
+    thread_expired = False
+    def waitThread():
+        global thread_expired
+        thread_expired = True
+        pfatal(
+            'Time expired'
+        )
+        sys.exit(1)
+    if timeout:
+        global t
+        t = threading.Timer(int(timeout), waitThread)
+        t.start()
+    while not result_received or counter != len(server):
         bundles = rhiz.get_bundlelist(token=token)
+
+        if thread_expired:
+            break
+
         if bundles:
             for bundle in bundles:
+                pinfo("bundle loop")
+                if thread_expired:
+                    break
+
                 # The first bundle is the most recent. Therefore, we have to save the new token.
                 token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
 
@@ -219,3 +246,11 @@ def client_call_dtn(server, name, args):
                     result_received = True
 
         time.sleep(1)
+
+def signal_handler(_, __):
+    ''' Just a simple CTRL-C handler.
+    '''
+    global t
+    t.cancel()
+    utilities.pwarn('Stopping DTN-RPyC and the timeout thread.')
+    sys.exit(0)

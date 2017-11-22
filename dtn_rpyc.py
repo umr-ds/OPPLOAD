@@ -17,7 +17,6 @@ import signal
 import utilities
 import server
 import client
-
 class DTNRPyC(object):
     '''Main DTN-RPyC class. Contains just a argument parser and calls server or cloent.
     '''
@@ -141,7 +140,11 @@ class DTNRPyC(object):
             help='Configuration file',
             default='rpc.conf'
         )
-
+        parser.add_argument(
+            '-t',
+            '--timeout',
+            help='Seconds how long the client waits for results'
+        )
         args = parser.parse_args(sys.argv[2:])
 
         # Before calling the procedure, check, if the config file can be parsed
@@ -151,7 +154,11 @@ class DTNRPyC(object):
         pre_exec_checks(False)
 
         utilities.pinfo('Calling procedure \'%s\' in DTN mode.' % args.name)
-        client.client_call_dtn(args.server, args.name, args.arguments)
+        if args.timeout:
+            signal.signal(signal.SIGINT, client.signal_handler)
+            client.client_call_dtn(args.server, args.name, args.arguments, args.timeout)
+        else:
+            client.client_call_dtn(args.server, args.name, args.arguments)
 
 def pre_exec_checks(server_checks):
     ''' Checks, if all files are present and if Serval is running
