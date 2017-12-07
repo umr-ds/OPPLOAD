@@ -12,6 +12,9 @@ from utilities import pdebug, pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP
 import threading
 import sys
 import signal
+
+my_sid = ""
+
 def rpc_for_me(potential_result, name, args, sid):
     ''' Helper function to decide if the received RPC result is for the client.
 
@@ -38,6 +41,7 @@ def client_find_server(rhiz, name, args, server = False):
     Returns:
         str: SID of the server or None, if not found.
     '''
+    global my_sid
 
     # If there are no bundles, the are no servers offering anything. Abort.
     bundles = rhiz.get_bundlelist()
@@ -57,7 +61,7 @@ def client_find_server(rhiz, name, args, server = False):
                break
             if procedure[1] == name and len(procedure[2:]) == len(args):
                 if server:
-                    if bundle.name not in server_list:
+                    if bundle.name not in server_list and bundle.id is not my_sid:
                         server_list.append(bundle.name)
                 else:
                     return bundle.name
@@ -90,6 +94,7 @@ def client_call_dtn(server, name, args, timeout = None):
     # Get the first SID found in Keyring.
     # Recent versions of Serval do not have a SID by default, which has to be
     # handled. Therefore, check if we could get a SID.
+    global my_sid
     my_sid = connection.first_identity
     if not my_sid:
         pfatal(
@@ -122,7 +127,6 @@ def client_call_dtn(server, name, args, timeout = None):
     # Find all servers which can execute the given procedure
     else:
         server_list = client_find_server(rhiz, name, args, True)
-        print(server_list)
     # Now the callbundle can be build.
     call_bundle = utilities.make_bundle(call_bundle_fields)
 
