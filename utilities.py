@@ -73,7 +73,7 @@ def read_config(path):
     except FileNotFoundError:
         pfatal('DTN-RPyC configuration file %s was not found. Aborting.' % path)
         return False
-
+    print(CONFIGURATION)
 def make_bundle(manifest_props, rpc_service=True):
     '''Compiles a bundle of a list of tuples.
     Args:

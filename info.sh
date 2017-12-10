@@ -1,6 +1,6 @@
 #!/bin/bash
 reset
-serval_running=$(sudo servald status | grep "status" | awk '{split($0,out,":"); print out[2]}')
+serval_running=$(servald status | grep "status" | awk '{split($0,out,":"); print out[2]}')
 if [ "$serval_running" = "stopped" ]; then
     echo "Start serval first"
     #exit 1
