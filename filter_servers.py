@@ -83,6 +83,12 @@ def client_filter(args):
     parse_server_caps(server_list, args)
 
 def parse_server_caps(server_list, args):
+    ''' Parsing capabilities function.
+
+    Args:
+        server_list (dictionary -> server_id : capabilities): Found server capabilities
+        args (list of strings): Filter arguments.
+    '''
     desired_args_dict = {}
     desired_args = {}
     real_args_in = {}
@@ -92,6 +98,7 @@ def parse_server_caps(server_list, args):
             arg_s[1] = arg_s[1].replace(",", ".")
         desired_args_dict[arg_s[0]] = arg_s[1]
 
+    # Goes through server capabilities and check them against the desired capabilities
     for server in server_list:
         args_in = {}
         real_args_in[server] = set()
@@ -127,7 +134,7 @@ def parse_server_caps(server_list, args):
                         real_args_in[server].add(str(arg) + "=" +args_in[arg])
                         del desired_args_dict[server][arg]
                 elif arg == "power_percentage":
-                    # check if battery_power is greater or charging
+                    # check if battery_power is greater // TODO or charging
                     if float(args_in[arg][:-1]) >= float(desired_args_dict[arg][:-1]):
                         real_args_in[server].add(str(arg) + "=" + args_in[arg])
                         del desired_args_dict[server][arg]

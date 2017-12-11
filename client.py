@@ -168,7 +168,7 @@ def client_call_dtn(server, name, args, timeout = None):
         global t
         t = threading.Timer(int(timeout), waitThread)
         t.start()
-    while not result_received or counter != len(server):
+    while not result_received or counter != len(server_list):
         bundles = rhiz.get_bundlelist(token=token)
 
         if thread_expired:
@@ -176,7 +176,6 @@ def client_call_dtn(server, name, args, timeout = None):
 
         if bundles:
             for bundle in bundles:
-                pinfo("bundle loop")
                 if thread_expired:
                     break
 
@@ -219,6 +218,7 @@ def client_call_dtn(server, name, args, timeout = None):
                     # the call bundle will be updated with an empty file.
                     # This type will instruct the server to clean up
                     # the files involved during this RPC.
+                    #if server != 'all' or server != 'broadcast':
                     clear_bundle = utilities.make_bundle([
                         ('type', CLEANUP),
                         ('name', name),
@@ -232,6 +232,7 @@ def client_call_dtn(server, name, args, timeout = None):
                     # If the call was broadcastet, we do not want to stop here.
                     if server == 'all' or server == 'broadcast':
                         counter = counter + 1
+                        pinfo("Received result " + str(counter) + "/" + str(len(server_list)))
                         continue
 
                     result_received = True
