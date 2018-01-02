@@ -124,6 +124,7 @@ def client_call_dtn(server, name, args, timeout = None):
     # If this is an 'all' or 'broadcast' call, we must not provide sender and recipient.
     if not server == 'all' and not server == 'broadcast':
         call_bundle_fields.append(('recipient', server))
+        server_list = [server]
     # Find all servers which can execute the given procedure
     else:
         server_list = client_find_server(rhiz, name, args, True)
