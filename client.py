@@ -286,7 +286,7 @@ def client_call_dtn(server, name, args, timeout = None):
     # If this is an 'all' or 'broadcast' call, we must not provide sender and recipient.
     recipient = None
     if not server == 'all' and not server == 'broadcast':
-        if type(server) is list: and len(server) > 1:
+        if type(server) is list and len(server) > 1:
             # send jobfile to the first server
             jobfile = ['file', 'jobtask_' + my_sid.sid + '_' + timestamp + '.jb']
             procedure_name = name
