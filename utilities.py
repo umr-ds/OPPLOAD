@@ -131,7 +131,9 @@ def is_server_address(sid):
     if sid == 'any' \
         or sid == 'all' \
         or sid == 'broadcast' \
-        or (all(hex_char in string.hexdigits for hex_char in sid) and len(sid) == 64):
+        or (all(hex_char in string.hexdigits for hex_char in sid) and len(sid) == 64) \
+        or (all(hex_char in string.hexdigits for sids in sid for hex_char in sids) and all(len(sids) == 64 for sids in sid)) \
+        or (char == 'any' or all(char in string.hexdigits) for sids in sid for char in sids):
         return True
 
     pfatal('%s is not a valid server address. Aborting.' % sid)

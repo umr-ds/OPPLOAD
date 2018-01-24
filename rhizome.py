@@ -111,7 +111,7 @@ class Rhizome(object):
             bid (str):          A BID if the bundle should be updated.
 
         Returns:
-            Raw string of the iserted Bundle.
+            Raw string of the inserted Bundle.
         '''
         if not sid:
             sid = self._connection.first_identity.sid

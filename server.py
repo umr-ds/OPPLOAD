@@ -11,7 +11,7 @@ import restful
 import utilities
 from utilities import pdebug, pinfo, pfatal, pwarn
 from utilities import ACK, CALL, CLEANUP, ERROR, RESULT
-
+import client
 # A threading lock for critical parts like updating offered procedures.
 LOCK = threading.RLock()
 
@@ -109,6 +109,8 @@ def server_offering_procedure(procedure):
                 procedure.return_type = offered_procedure.return_type
                 bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
 
+                bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
+
                 if not os.path.exists(bin_path) or not os.access(bin_path, os.X_OK):
                     pwarn('Server is offering procedure \'%s\', ' \
                             'but it seems the binary %s/%s is not present' \
@@ -162,7 +164,7 @@ def server_execute_procedure(procedure):
 def server_handle_call(potential_call, rhiz, my_sid):
     '''Main handler function for an incoming call.
     Args:
-        potential_call (Bundle):    The potential call, which has to be handles.
+        potential_call (Bundle):    The potential call, which has to be handled.
         rhiz (Rhizome):             The Rhizome connection
         my_sid (ServalIdentity):    ServalIdentity of the server
     '''
@@ -170,59 +172,186 @@ def server_handle_call(potential_call, rhiz, my_sid):
 
     # First step, parse the potential call.
     procedure = server_parse_call(potential_call)
-
-    if server_offering_procedure(procedure):
+    # TODO remove this double checks
+    if procedure.name == "file" or server_offering_procedure(procedure):
         # If the server offers the procedure,
         # we first have to download the file because it will be removed as soon we send the ack.
-        if procedure.args[0] == 'file':
+        # the if in the next line might be obscolete, because only the text is sent to all servers not the file itself
+        if procedure.args[0] == 'jobfile':
             path = '/tmp/%s_%s' % (procedure.name, potential_call.version)
             rhiz.get_decrypted_to_file(potential_call.id, path)
-            procedure.args[1] = path
+            n_procedure = None
+            csid = None,
+            tsid = None
+            tprocedure = None
+            targs = []
+            counter = 0
+            ldis = 0
 
-        # Compile and insert the ACK bundle.
-        ack_bundle = utilities.make_bundle([
-            ('type', ACK),
-            ('name', potential_call.name),
-            ('sender', my_sid.sid),
-            ('recipient', potential_call.sender),
-            ('args', potential_call.args)])
-        rhiz.insert(ack_bundle, '', my_sid.sid)
-        pinfo('Ack is sent. Will execute procedure.')
+            f = open(path, 'r+')
+            lines = f.readlines()
+            for line_c in range(len(lines)):
+                # parse jobfile for target sid as well as client sid
+                x = lines[line_c]
+                if 'client_sid' in x:
+                    csid = x.split('=')[1]
+                    counter = counter+1
+                    pdebug('Csid found: ' + csid)
+                    continue
 
-        # After sending the ACK, start the execution.
-        code, result = server_execute_procedure(procedure)
+                x = x.split(' ')
+                # parse jobs until this_server's sid is found
+                if x[0] == my_sid.sid and 'DONE' not in x:
+                    lprocedure = x[1]
+                    pdebug("Job for me found: " + lprocedure)
+                    if len(x) > 2:
+                        largs = x[2:]
+                    ldis = counter
+                    x = None
+                    n_procedure = Procedure(name=lprocedure, args=largs)
+                    if (line_c + 1) < len(lines):
+                        x = lines[line_c + 1]
+                        if x is not None or x is not '':
+                            split = x.split(' ')
+                            tsid = split[0]
+                            tprocedure = split[1]
+                            if len(x) > 2:
+                                targs = split[2:]
+                                break
+                        else:
+                            counter = counter + 1
+                    else:
+                        # the linebreak has to be removed, otherwise the manifest check breaks
+                        tsid = csid.replace("\n", "")
+                        path = None
+                        break
+                elif 'DONE' not in x:
+                    break
+                else:
+                    counter = counter+1
+            # checks if procedure in jobfile is offered by this server
+            if n_procedure is not None and server_offering_procedure(n_procedure):
+                ack_bundle = utilities.make_bundle([
+                    ('type', ACK),
+                    ('name', potential_call.name),
+                    ('sender', my_sid.sid),
+                    ('recipient', potential_call.sender),
+                    ('args', potential_call.args)])
+                rhiz.insert(ack_bundle, '', my_sid.sid)
+                pinfo('Ack is sent. Will execute procedure.')
+                # After sending the ACK, start the execution.
+                code, result = server_execute_procedure(n_procedure)
+                # send updated jobfile to the next listed server / or back to the client
+                lines[ldis] = lines[ldis].strip("\n") + " DONE \n"
+                if tprocedure is not None:
+                    # Update jobfile
+                    lines[ldis + 1] = lines[ldis + 1].strip("\n") + " " + result.decode('utf-8') + "\n"
+                    targs = lines[ldis +1].split(' ')[2:]
+                    # check if a server has to be found
+                    if tsid == 'any':
+                        # fetch a server which offers the given procedure, and remove
+                        possible_server = client.client_find_server(rhiz, tprocedure, targs, True)
+                        # TODO leads to a crash if the procedure is not offered by the server who checks
+                        possible_server.remove(my_sid.sid)
+                        if possible_server != None:
+                            possible_server = possible_server[0]
+                            if type(possible_server) is list:
+                                possible_server = possible_server[0]
+                            lines[line_c + 1] = lines[line_c + 1].replace('any', possible_server)
+                            tsid = possible_server
+                    # update the jobfile
+                    f.seek(0)
+                    for line in lines:
+                        f.write(line)
+                    f.close()
+                    pdebug('Sending new task to tsid: ' + tsid)
+                    # Send file to the next recipient
+                    client.client_call_cc_dtn([tsid, '*'], 'file', ['file', path], path)
+                else:
+                    # Send the result directly to the initial client
+                    pdebug("Return result back to the client")
+                    result_bundle_values = [
+                        ('name', procedure.name),
+                        ('sender', my_sid.sid),
+                        ('recipient', tsid),
+                        ('args', procedure.args[-1])
+                        ]
 
-        # At this point the result handling starts.
-        # Therefore, we make a bundle with common values and within the different cases,
-        # and send the bundle and payload at the end.
-        result_bundle_values = [
-            ('name', potential_call.name),
-            ('sender', my_sid.sid),
-            ('recipient', potential_call.sender),
-            ('args', potential_call.args)
-        ]
-        payload = ''
+                    payload = ''
+                    # If code is 1, an error occured.
+                    if code == 1:
+                        result_bundle_values = result_bundle_values + [('type', ERROR), ('result', result)]
 
-        # If code is 1, an error occured.
-        if code == 1:
-            result_bundle_values = result_bundle_values + [('type', ERROR), ('result', result)]
+                    # If the return type is file, we have to open a file, assuming the result is a file path.
+                    elif procedure.return_type == 'file':
+                        rfile = 'resultfile.rs'
+                        ff = open(rfile, 'w+')
+                        ff.write(result.decode('utf-8'))
+                        ff.close()
+                        result_bundle_values = result_bundle_values + [('type', RESULT), ('result', 'file')]
+                        payload = open(rfile, 'rb')
+                        # This is the only case, where we have to remember the bundle id for cleanup later on.
+                        CLEANUP_BUNDLES[potential_call.id] = ack_bundle.id
+                        pinfo('Result was sent. Call successfull, waiting for next procedure.\n')
 
-        # If the return type is file, we have to open a file, assuming the result is a file path.
-        elif procedure.return_type == 'file':
-            result_bundle_values = result_bundle_values + [('type', RESULT), ('result', 'file')]
-            payload = open(result.decode('utf-8'), 'rb')
-            # This is the only case, where we have to remember the bundle id for cleanup later on.
-            CLEANUP_BUNDLES[potential_call.id] = ack_bundle.id
-            pinfo('Result was sent. Call successufull, waiting for next procedure.\n')
+                    # This is the most simple case. Just return the result.
+                    else:
+                        result_bundle_values = result_bundle_values + [('type', RESULT), ('result', result)]
+                        pinfo('Result was sent. Call successfull, waiting for next procedure.\n')
 
-        # This is the most simple case. Just return the result.
+                    # The final step. Compile and insert the result bundle.
+                    result_bundle = utilities.make_bundle(result_bundle_values)
+                    rhiz.insert(result_bundle, payload, my_sid.sid, ack_bundle.id)
+
+
+            else:
+                pdebug('An error occured and no procedure was found in the jobfile or the job is done already.')
+                return
+                #TODO proper error handling
         else:
-            result_bundle_values = result_bundle_values + [('type', RESULT), ('result', result)]
-            pinfo('Result was sent. Call successfull, waiting for next procedure.\n')
+            # Compile and insert the ACK bundle.
+            ack_bundle = utilities.make_bundle([
+                ('type', ACK),
+                ('name', potential_call.name),
+                ('sender', my_sid.sid),
+                ('recipient', potential_call.sender),
+                ('args', potential_call.args)])
+            rhiz.insert(ack_bundle, '', my_sid.sid)
+            pinfo('Ack is sent. Will execute procedure.')
 
-        # The final step. Compile and insert the result bundle.
-        result_bundle = utilities.make_bundle(result_bundle_values)
-        rhiz.insert(result_bundle, payload, my_sid.sid, ack_bundle.id)
+            # After sending the ACK, start the execution.
+            code, result = server_execute_procedure(procedure)
+
+            # At this point the result handling starts.
+            # Therefore, we make a bundle with common values and within the different cases,
+            # and send the bundle and payload at the end.
+            result_bundle_values = [
+                ('name', potential_call.name),
+                ('sender', my_sid.sid),
+                ('recipient', potential_call.sender),
+                ('args', potential_call.args)
+            ]
+            payload = ''
+
+            # If code is 1, an error occured.
+            if code == 1:
+                result_bundle_values = result_bundle_values + [('type', ERROR), ('result', result)]
+
+            # If the return type is file, we have to open a file, assuming the result is a file path.
+            elif procedure.return_type == 'file':
+                result_bundle_values = result_bundle_values + [('type', RESULT), ('result', 'file')]
+                payload = open(result.decode('utf-8'), 'rb')
+                # This is the only case, where we have to remember the bundle id for cleanup later on.
+                CLEANUP_BUNDLES[potential_call.id] = ack_bundle.id
+                pinfo('Result was sent. Call successfull, waiting for next procedure.\n')
+	        # This is the most simple case. Just return the result.
+            else:
+                result_bundle_values = result_bundle_values + [('type', RESULT), ('result', result)]
+                pinfo('Result was sent. Call successfull, waiting for next procedure.\n')
+
+            # The final step. Compile and insert the result bundle.
+            result_bundle = utilities.make_bundle(result_bundle_values)
+            rhiz.insert(result_bundle, payload, my_sid.sid, ack_bundle.id)
 
     else:
         # In this case, the server does not offer the procedure.
@@ -243,6 +372,7 @@ def server_cleanup_store(bundle, sid, rhiz):
     Args:
         bundle (Bundle):    The bundle which triggers the cleanup
         sid (str):          Author SID for the bundle
+
         rhiz (Rhizome):     Rhizome connection
     '''
     # Try to lookup the BID for the Bundle to be cleaned,
@@ -256,6 +386,7 @@ def server_cleanup_store(bundle, sid, rhiz):
         del CLEANUP_BUNDLES[bundle.id]
     except KeyError:
         return
+
 
 def server_listen_dtn():
     '''Main listening function.

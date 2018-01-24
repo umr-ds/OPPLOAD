@@ -10,6 +10,7 @@ import sys
 import socket
 import copy
 parsed_arguments = {}
+my_sid = ""
 
 def client_find_server(rhiz, args):
     '''Searches for all servers, which have to pass different filters.
@@ -21,6 +22,7 @@ def client_find_server(rhiz, args):
         str: SID(s) of the server(s) or None, if not found.
     '''
     global parsed_arguments
+    global my_sid
     for arg in args:
         arg = arg.split("=")
         parsed_arguments[arg[0]] = arg[1]
@@ -31,19 +33,19 @@ def client_find_server(rhiz, args):
         return None
     server_list = {}
     for bundle in bundles:
-        hostname = socket.gethostname()
         name = str(bundle).split(':')[1]
-        if not bundle.service == 'file' or name  == hostname + ".info": #file
+        if not bundle.service == 'file' or name  == (str(my_sid) + ".info"): #file
             continue
+        server_id = (name.split('.')[0])
         offers = rhiz.get_decrypted(bundle.id).split('\n')
         for offer in offers:
             if offer == '':
                continue
             offer_arg = offer.split("=")
             if offer_arg[0] in parsed_arguments:
-                if not bundle.id in server_list:
-                    server_list[bundle.id] = set()
-                server_list[bundle.id].add(offer)
+                if not server_id in server_list:
+                    server_list[server_id] = set()
+                server_list[server_id].add(offer)
             else:
                 continue
     return server_list
@@ -139,7 +141,7 @@ def parse_server_caps(server_list, args):
                         real_args_in[server].add(str(arg) + "=" + args_in[arg])
                         del desired_args_dict[server][arg]
     for args in real_args_in:
-        print("Server: " + args)
+        print("\nServer:" + str(args))
         for arg in real_args_in[args]:
             pinfo(arg)
         for arg in desired_args[args]:
