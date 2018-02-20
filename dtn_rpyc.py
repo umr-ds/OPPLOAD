@@ -198,6 +198,12 @@ class DTNRPyC(object):
             '--cascade',
             help='Cascading jobs' #TODO better help
         )
+        parser.add_argument(
+            '-fc',
+            '--filter',
+            help='Filter servers by capabilities',
+            nargs='+'
+        )
         args = parser.parse_args(sys.argv[2:])
 
         # Before calling the procedure, check, if the config file can be parsed
@@ -210,7 +216,7 @@ class DTNRPyC(object):
             signal.signal(signal.SIGINT, client.signal_handler)
             client.client_call_dtn(args.server, args.name, args.arguments, args.timeout)
         else:
-            client.client_call_dtn(args.server, args.name, args.arguments)
+            client.client_call_dtn(args.server, args.name, args.arguments, args.timeout, args.filter)
 
     def cascade(self):
             ''' The client subparser and invocation.
@@ -264,6 +270,12 @@ class DTNRPyC(object):
                 '-t',
                 '--timeout',
                 help='Seconds how long the client waits for results'
+            )
+            parser.add_argument(
+                '-fc',
+                '--filter',
+                help='Filter servers by capabilities',
+                nargs='+'
             )
             args = parser.parse_args(sys.argv[2:])
 

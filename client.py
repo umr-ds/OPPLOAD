@@ -13,7 +13,7 @@ from utilities import pdebug, pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP
 import threading
 import sys
 import signal
-
+import filter_servers
 my_sid = None
 
 def rpc_for_me(potential_result, name, args, sid):
@@ -72,7 +72,7 @@ def client_find_server(rhiz, name, args, server = False):
     else:
         return None
 
-def client_call_cc_dtn(server, name, args, file=None):
+def client_call_cc_dtn(server, name, args, file = None, filter = None):
     ''' Main calling function for cascading job distribution in DTN mode.
 
     Args:
@@ -102,7 +102,7 @@ def client_call_cc_dtn(server, name, args, file=None):
         )
      # If the server address is 'any', we have to find a server, which offers this procedure.
     if server == 'any':
-        server = client_find_server(rhiz, name, args)
+        server = filter_servers.client_find_server(rhiz, filter, name) if (filter is not None) else client_find_server(rhiz, name, args)
         if not server:
             pfatal('Could not find any server offering the procedure. Aborting.')
             return
@@ -154,7 +154,7 @@ def client_call_cc_dtn(server, name, args, file=None):
             server_list = [server]
     # Find all servers which can execute the given procedure
     else:
-        server_list = client_find_server(rhiz, name, args, True)
+        server_list = filter_servers.client_find_server(rhiz, filter, name) if (filter is not None) else client_find_server(rhiz, name, args)
     # Prepare the call bundle
     # Now the callbundle can be build.
     call_bundle = utilities.make_bundle(call_bundle_fields)
@@ -224,7 +224,7 @@ def update_file(file, linecounter, sid):
     else:
         return False
 
-def client_call_dtn(server, name, args, timeout = None):
+def client_call_dtn(server, name, args, timeout = None, filter = None):
     ''' Main calling function for DTN mode.
 
     Args:
@@ -257,7 +257,9 @@ def client_call_dtn(server, name, args, timeout = None):
 
     # If the server address is 'any', we have to find a server, which offers this procedure.
     if server == 'any':
-        server = client_find_server(rhiz, name, args)
+        server = filter_servers.client_find_server(rhiz, filter, name) if (filter is not None) else client_find_server(rhiz, name, args)
+        if filter is not None:
+            server = filter_servers.parse_server_caps(server, filter)
         if not server:
             pfatal('Could not find any server offering the procedure. Aborting.')
             return
@@ -297,7 +299,9 @@ def client_call_dtn(server, name, args, timeout = None):
             pdebug('prepared cascading jobfile')
             recipient = server[0]
             if recipient == 'any':
-                recipient = client_find_server(rhiz, procedure_name[0], procedure_args[0].split(' '))
+                server = filter_servers.client_find_server(rhiz, filter, procedure_name) if (filter is not None) else client_find_server(rhiz, procedure_name, args)
+                if filter is not None:
+                    server = filter_servers.parse_server_caps(server, filter)
                 if type(recipient) is list:
                     recipient = recipient[0]
                 update_file('jobtask_' + my_sid.sid + '_' + timestamp + '.jb', 1, recipient)
@@ -307,13 +311,16 @@ def client_call_dtn(server, name, args, timeout = None):
             server_list = [server]
     # Find all servers which can execute the given procedure
     else:
-        server_list = client_find_server(rhiz, name, args, True)
+        server_list = filter_servers.client_find_server(rhiz, filter, name) if (filter is not None) else client_find_server(rhiz, name, args)
+        if filter is not None:
+            server_list = filter_servers.parse_server_caps(server, filter)
     # Prepare the call bundle
     # Now the callbundle can be build.
     call_bundle_fields.append(('name', name))
     call_bundle_fields.append(('args', joined_args))
     call_bundle_fields.append(('sender', my_sid.sid))
     if recipient is not None:
+        for x in recipient: recipient = x; break;
         call_bundle_fields.append(('recipient', recipient))
 
     call_bundle = utilities.make_bundle(call_bundle_fields)

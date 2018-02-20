@@ -12,7 +12,7 @@ import copy
 parsed_arguments = {}
 my_sid = ""
 
-def client_find_server(rhiz, args):
+def client_find_server(rhiz, args, procedure = None):
     '''Searches for all servers, which have to pass different filters.
     Args:
         rhiz (Rhizome):     Rhizome connection to Serval
@@ -26,7 +26,7 @@ def client_find_server(rhiz, args):
     for arg in args:
         arg = arg.split("=")
         parsed_arguments[arg[0]] = arg[1]
-
+    server_offer = {}
     # If there are no bundles, the are no servers offering anything. Abort.
     bundles = rhiz.get_bundlelist()
     if not bundles:
@@ -34,20 +34,32 @@ def client_find_server(rhiz, args):
     server_list = {}
     for bundle in bundles:
         name = str(bundle).split(':')[1]
-        if not bundle.service == 'file' or name  == (str(my_sid) + ".info"): #file
+        if not (bundle.service == 'file' or name  == (str(my_sid) + ".info") or (bundle.service == 'RPC_OFFER' and procedure is not None)): #file
             continue
         server_id = (name.split('.')[0])
         offers = rhiz.get_decrypted(bundle.id).split('\n')
         for offer in offers:
             if offer == '':
                continue
-            offer_arg = offer.split("=")
-            if offer_arg[0] in parsed_arguments:
-                if not server_id in server_list:
-                    server_list[server_id] = set()
-                server_list[server_id].add(offer)
+            # check if its an offer or an info file
+            if procedure is not None and bundle.service == 'RPC_OFFER':
+                offered_procedure = offer.split(' ')
+                if not server_id in server_offer:
+                    server_offer[server_id] = set()
+                server_offer[server_id].add(offered_procedure[1])
+
             else:
-                continue
+                offer_arg = offer.split("=")
+                if offer_arg[0] in parsed_arguments:
+                    if not server_id in server_list:
+                        server_list[server_id] = set()
+                    server_list[server_id].add(offer)
+                else:
+                    continue
+    for server in server_offer:
+        if procedure not in server_offer[server] and server in server_list:
+            del server_list[server_id]
+
     return server_list
 
 def client_filter(args):
@@ -81,7 +93,6 @@ def client_filter(args):
     args = set(args)
     # Find all servers which passes at least one filter
     server_list = client_find_server(rhiz, args)
-    #print(server_list)
     parse_server_caps(server_list, args)
 
 def parse_server_caps(server_list, args):
@@ -140,12 +151,16 @@ def parse_server_caps(server_list, args):
                     if float(args_in[arg][:-1]) >= float(desired_args_dict[arg][:-1]):
                         real_args_in[server].add(str(arg) + "=" + args_in[arg])
                         del desired_args_dict[server][arg]
+    server_list = set()
     for args in real_args_in:
+        server_list.add(str(args))
         print("\nServer:" + str(args))
         for arg in real_args_in[args]:
             pinfo(arg)
         for arg in desired_args[args]:
             pfatal(arg)
+            server_list.remove(args)
+    return server_list
 
 def signal_handler(_, __):
     ''' Just a simple CTRL-C handler.
