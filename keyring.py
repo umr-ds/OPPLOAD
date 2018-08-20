@@ -1,3 +1,4 @@
+import json
 ''' Module for Keyring and Identity management in Serval
 '''
 
@@ -103,7 +104,29 @@ class Keyring(object):
         Returns:
             ServalIdentitity: A list of all gathered Serval Identities from Keyring.
         '''
-        identities_json = self._connection.get('/restful/keyring/identities.json').json()
+        identities_json = self._connection.get('/restful/keyring/identities.json')
+        if len(identities_json) == 0:
+            return []
+        brackets = 0
+        block = 0
+        for x in identities_json:
+            if x == "{":
+                brackets += 1
+            elif x == "}":
+                brackets -= 1
+            if x == "[":
+                block += 1
+            if x == "]":
+                block -= 1
+        while block > 0:
+            #print('Adding ]')
+            identities_json += "]"
+            block -= 1
+        while brackets > 0:
+            #print('Adding }')
+            identities_json += "}"
+            brackets -= 1
+        identities_json =  json.loads(identities_json)
         identities = []
 
         for row in identities_json['rows']:

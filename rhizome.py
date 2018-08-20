@@ -1,8 +1,10 @@
 '''Module for maintaining for Rhizome Bundles.
 '''
-
+import utilities as util
+import json
+import os
 class Bundle(object):
-    '''Calss for Rhizome Bundles.
+    '''Clss for Rhizome Bundles.
     Args:
         entries (dict): A dictionary for the attributes.
     '''
@@ -39,6 +41,28 @@ class Rhizome(object):
     def __init__(self, _connection):
         self._connection = _connection
 
+    def fix_closures(self, bundlestring):
+        brackets = 0
+        block = 0
+        for x in bundlestring:
+            if x == "{":
+                brackets += 1
+            elif x == "}":
+                brackets -= 1
+            if x == "[":
+                block += 1
+            if x == "]":
+                block -= 1
+        while block > 0:
+            bundlestring += "]"
+            block -= 1
+        while brackets > 0:
+            bundlestring += "}"
+            brackets -= 1
+
+        return bundlestring
+
+
     # GET /restful/rhizome/bundlelist.json
     def get_bundlelist(self, token=None):
         '''Get the bundle list from Rhizome store
@@ -49,17 +73,20 @@ class Rhizome(object):
         '''
         bundlelist = None
         if token:
+            # FIXME loads forever
             bundlelist = self._connection.get(
                 '/restful/rhizome/newsince/%s/bundlelist.json' % token
             )
-            bundlelist = bundlelist.json()
+            bundlelist = self.fix_closures(bundlelist)
+            if len(bundlelist) == 0:
+                util.pfatal('Serval crashed')
+            bundlelist = json.loads(bundlelist)
         else:
             bundlelist = self._connection.get('/restful/rhizome/bundlelist.json')
-            bundlelist = bundlelist.json()
-
+            bundlelist = self.fix_closures(bundlelist)
+            bundlelist = json.loads(bundlelist)
         bundlelist_dict = [dict(list(zip(bundlelist['header'], interest))) \
             for interest in bundlelist['rows']]
-
         return [Bundle(**bundle) for bundle in bundlelist_dict]
 
     # GET /restful/rhizome/BID.rhm
@@ -70,10 +97,21 @@ class Rhizome(object):
         Returns:
             Bundle: The downloaded bundle.
         '''
-        manifest = self._connection.get('/restful/rhizome/%s.rhm' % bid).text
-        manifest_list = manifest.split('\0')
-        manifest_parts = list(filter(None, manifest_list[0].split('\n')))
-        manifest_dict = dict([(part.split('=')[0], part.split('=')[1])for part in manifest_parts])
+        manifest = self._connection.get('/restful/rhizome/%s.rhm' % bid)
+        true_manifest = ""
+        for char in manifest:
+            if char == 0:
+                break
+            true_manifest += chr(char)
+
+        #print(true_manifest)
+        #manifest_list = manifest.split('\x00')
+        manifest_parts = true_manifest.split('\n')
+        #manifest_parts = manifest_list#list(filter(None, manifest_list[0].split('\n')))
+        #print(manifest_parts)
+        if '' in manifest_parts:
+            manifest_parts.remove('')
+        manifest_dict = dict([(part.split('=')[0], part.split('=')[1]) for part in manifest_parts])
         return Bundle(**manifest_dict)
 
     # GET /restful/rhizome/BID/decrypted.bin
@@ -84,7 +122,8 @@ class Rhizome(object):
         Returns:
             Bundle: The downloaded payload.
         '''
-        decrypted = self._connection.get('/restful/rhizome/%s/decrypted.bin' % bid).text
+        #decrypted = self._connection.get('/restful/rhizome/%s/decrypted.bin' % bid).text
+        decrypted = self._connection.get('/restful/rhizome/%s/decrypted.bin' % bid).decode('utf-8')
         return decrypted
 
     def get_decrypted_to_file(self, bid, path):
@@ -98,8 +137,9 @@ class Rhizome(object):
         )
 
         with open(path, 'wb') as handle:
-            for block in decrypted.iter_content(1024 * 1024):
-                handle.write(block)
+            handle.write(decrypted)
+            #for block in decrypted.iter_content(1024 * 1024):
+                #handle.write(block)
 
     # POST /restful/rhizome/insert
     def insert(self, bundle, payload, sid=None, bid=None):
@@ -123,11 +163,10 @@ class Rhizome(object):
 
         if bid:
             multipart.append(('bundle-id', bid))
-
         multipart.append(('manifest', ('manifest1', manifest_file, \
             'rhizome/manifest;format="text+binarysig"')))
         multipart.append(('payload', ('file1', payload)))
-
+        #print(multipart)
         manifest_request = self._connection.post('/restful/rhizome/insert', files=multipart)
         bundle.update_with_manifest(manifest_request.text)
         return manifest_request.text

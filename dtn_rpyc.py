@@ -18,6 +18,10 @@ import utilities
 import server
 import client
 import filter_servers
+
+import os
+import logging
+
 class DTNRPyC(object):
     '''Main DTN-RPyC class. Contains just a argument parser and calls server or cloent.
     '''
@@ -54,19 +58,30 @@ class DTNRPyC(object):
             '-cc',
             '--cascade',
             action='store_true',
-            help='Cascading jobs' #TODO better help
+            help='Cascading jobs, by creating a jobfile from commandline.'
+        )
+        group.add_argument(
+            '-cj',
+            '--cascadejob',
+            action='store_true',
+            help='Cascading jobs, by a predefined jobfile.'
         )
         # Only parse the first argument to decide,
         # if it is a call, server or filter invocation.
         args = parser.parse_args(sys.argv[1:2])
         # Get the attribute called 'call' or 'listen', respectively.
         # With the braces the attribute will be called like a function.
+        if not args.listen:
+            LOG_FILENAME = '/tmp/local_dtn_rpyc.log'
+            logging.basicConfig(filename=LOG_FILENAME, level=logging.DEBUG)
         if args.call:
             getattr(self, 'call')()
         elif args.listen:
             getattr(self, 'listen')()
         elif args.cascade:
             getattr(self, 'cascade')()
+        elif args.cascadejob:
+            getattr(self, 'cascadejob')()
         else:
             getattr(self, 'filter')()
 
@@ -131,6 +146,13 @@ class DTNRPyC(object):
             help='Configuration file',
             default='rpc.conf')
 
+        parser.add_argument(
+            '-nd',
+            '--delete',
+            action='store_true',
+            help='Dont delete jobfile bundle folders for debug reasons.'
+        )
+
         args = parser.parse_args(sys.argv[2:])
 
         # Before starting the server, check, if the config file can be parsed
@@ -140,10 +162,10 @@ class DTNRPyC(object):
         pre_exec_checks(True)
 
         utilities.pinfo('Starting server in DTN mode.')
-        server.server_listen_dtn()
+        server.server_listen_dtn(args.delete)
 
     def call(self):
-        ''' The cleint subparser and invocation.
+        ''' The client subparser and invocation.
         Parses the remaining arguments and decides which client mode should be chosen.
         '''
         parser = argparse.ArgumentParser(
@@ -192,11 +214,6 @@ class DTNRPyC(object):
             '-t',
             '--timeout',
             help='Seconds how long the client waits for results'
-        )
-        parser.add_argument(
-            '-q',
-            '--cascade',
-            help='Cascading jobs' #TODO better help
         )
         parser.add_argument(
             '-fc',
@@ -277,6 +294,12 @@ class DTNRPyC(object):
                 help='Filter servers by capabilities',
                 nargs='+'
             )
+            parser.add_argument(
+                '-nd',
+                '--delete',
+                help='Dont delete jobfile zip after sending.',
+                action='store_true'
+            )
             args = parser.parse_args(sys.argv[2:])
 
             # Before calling the procedure, check, if the config file can be parsed
@@ -287,9 +310,68 @@ class DTNRPyC(object):
 
             if args.timeout:
                 signal.signal(signal.SIGINT, client.signal_handler)
-                client.client_call_dtn(args.server, args.name, args.arguments, args.timeout)
+                client.client_call_dtn(args.server, args.name, args.arguments, args.timeout, delete=args.delete)
             else:
-                client.client_call_dtn(args.server, args.name, args.arguments)
+                client.client_call_dtn(args.server, args.name, args.arguments, filter=args.filter, delete=args.delete)
+
+    def cascadejob(self):
+        ''' The cascade job subparser.
+        Parses the remaining arguments and decides which client mode should be chosen.
+        '''
+        parser = argparse.ArgumentParser(
+            description='Call a remote procedure in ...'
+        )
+
+        group = parser.add_mutually_exclusive_group()
+
+        group.add_argument(
+            '-d',
+            '--dtn',
+            action='store_true',
+            help='... in DTN mode.'
+        )
+        group.add_argument(
+            '-p',
+            '--peer',
+            action='store_true',
+            help='... in direct peer mode.'
+        )
+        parser.add_argument(
+            '-f',
+            '--config',
+            help='Configuration file.',
+            default='rpc.conf'
+        )
+        parser.add_argument(
+            '-j',
+            '--jobfile',
+            help='Predefined jobfile.',
+            required=True
+        )
+        parser.add_argument(
+            '-t',
+            '--timeout',
+            help='Seconds how long the client waits for results.'
+        )
+        parser.add_argument(
+            '-nd',
+            '--delete',
+            help='Dont delete jobfile zip after sending.',
+            action='store_true'
+        )
+        args = parser.parse_args(sys.argv[2:])
+
+        # Before calling the procedure, check, if the config file can be parsed
+        # and do some other checks.
+        if not utilities.read_config(args.config):
+            sys.exit(1)
+        pre_exec_checks(False)
+
+        if args.timeout:
+            signal.signal(signal.SIGINT, client.signal_handler)
+            client.client_call_dtn(jobfile=args.jobfile, timeout=args.timeout, delete=args.delete)
+        else:
+            client.client_call_dtn(jobfile=args.jobfile, delete=args.delete)
 
 def pre_exec_checks(server_checks):
     ''' Checks, if all files are present and if Serval is running
@@ -310,4 +392,26 @@ def signal_handler(_, __):
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
-    DTNRPyC()
+    try:
+        DTNRPyC()
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except:
+        raise
+        logging.exception('Got exception on main handler')
+        # TODO check if serval is running
+        utilities.pdebug('checking if serval is still running')
+        if not utilities.serval_running():
+            # start serval again
+            utilities.pdebug('Serval crashed. Restarting it')
+            # restarting serval
+            os.system('start_serval')
+            # TODO find origin client and send him the file
+            # or keep it when you are the client
+        utilities.pdebug('checking for globals')
+        if 'global_client_sid' in globals():
+            # send error report to client
+            utilities.pdebug('Send logfile to: ' + global_client_sid)
+        else:
+            utilities.pdebug('Nothing to do. Aborting')
+        raise

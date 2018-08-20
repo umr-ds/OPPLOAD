@@ -23,9 +23,12 @@ def client_find_server(rhiz, args, procedure = None):
     '''
     global parsed_arguments
     global my_sid
-    for arg in args:
-        arg = arg.split("=")
-        parsed_arguments[arg[0]] = arg[1]
+    if not type(args) is dict:
+        for arg in args:
+            arg = arg.split("=")
+            parsed_arguments[arg[0]] = arg[1]
+    else:
+        parsed_arguments=args
     server_offer = {}
     # If there are no bundles, the are no servers offering anything. Abort.
     bundles = rhiz.get_bundlelist()
@@ -47,7 +50,7 @@ def client_find_server(rhiz, args, procedure = None):
                 if not server_id in server_offer:
                     server_offer[server_id] = set()
                 server_offer[server_id].add(offered_procedure[1])
-
+            # filter parameter
             else:
                 offer_arg = offer.split("=")
                 if offer_arg[0] in parsed_arguments:
@@ -58,7 +61,7 @@ def client_find_server(rhiz, args, procedure = None):
                     continue
     for server in server_offer:
         if procedure not in server_offer[server] and server in server_list:
-            del server_list[server_id]
+            del server_list[server]
 
     return server_list
 
@@ -105,12 +108,18 @@ def parse_server_caps(server_list, args):
     desired_args_dict = {}
     desired_args = {}
     real_args_in = {}
-    for arg in args:
-        arg_s = arg.split("=")
-        if "," in arg_s[1]:
-            arg_s[1] = arg_s[1].replace(",", ".")
-        desired_args_dict[arg_s[0]] = arg_s[1]
 
+    if len(server_list) == 0:
+        return []
+
+    if not type(args) is dict:
+        for arg in args:
+            arg_s = arg.split("=")
+            if "," in arg_s[1]:
+                arg_s[1] = arg_s[1].replace(",", ".")
+            desired_args_dict[arg_s[0]] = arg_s[1]
+    else:
+        desired_args_dict = args
     # Goes through server capabilities and check them against the desired capabilities
     for server in server_list:
         args_in = {}
@@ -122,13 +131,12 @@ def parse_server_caps(server_list, args):
             if "," in arg[1]:
                 arg[1] = arg[1].replace(",", ".")
             args_in[arg[0]] = arg[1]
-
         for arg in args_in:
             if arg in desired_args_dict:
                 # check capabilities
                 if arg == "disk_space":
-                    # check greater
-                    if args_in[arg][-1] <= desired_args_dict[arg][-1] and float(args_in[arg][:-1]) >= float(desired_args_dict[arg][:-1]):
+                    # check if greater
+                    if args_in[arg][:-1] >= desired_args_dict[arg][:-1] and float(args_in[arg][:-1]) >= float(desired_args_dict[arg][:-1]):
                         real_args_in[server].add(str(arg) + "="+args_in[arg])
                         del desired_args[server][arg]
                 elif arg == "cpu_cores":

@@ -78,15 +78,41 @@ The success code has always to be `0` and the result has to be written to `stdou
 If the result is a file, the procedure has to write the file path to the result file to `stdout`. The server will handle everything else.
 
 ## Usage
-DTN-RPyC has two modes, `call` and `listen`.
+DTN-RPyC has four modes, `call`, `listen`, `cascade` and `cascadejob`.
 
 ### Client
 
 ```
 usage: ./dtn_rpyc -c [-h] [-d] [-p] -s SERVER -n NAME
               [-a [ARGUMENTS [ARGUMENTS ...]]] [-f CONFIG]
-
+```
 Call a remote procedure in ...
+
+### Client list servers by filters
+```
+usage: ./dtn_rpyc -fc [-h] -k FILTERS
+              [-f CONFIG]
+```
+current example filters:
+```    
+cpu_cores=2
+cpu_load=0.1
+disk_space=5G
+TODO power_state
+TODO power_percentage=50
+TODO graphics card available
+```
+### Client create jobfile from commandline
+
+```
+usage: ./dtn_rpyc -cc [-h] [-d] [-p] -s SERVERS -n NAMES
+              [-a [ARGUMENTS [ARGUMENTS ...]] in quotes!] [-f CONFIG] [-t TIMEOUT] [-fc FILTER] [-nd]
+```
+### Client load a predefined jobfile
+
+```
+usage: ./dtn_rpyc -cj [-h] [-d] [-p] -j JOBFILE 
+            [-f CONFIG] [-t TIMEOUT] [-nd]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -99,8 +125,12 @@ optional arguments:
                         List of parameters
   -f CONFIG, --config CONFIG
                         Configuration file
-```
+  -t TIMEOUT --timeout  Seconds how long the client waits for results
 
+  -nd --delete          FLAG: if set, files are kept during cascading process.
+  -fc FILTERS [FILTERS ...],
+      --filters         Filter parameters for server finding
+```
 The arguments should be self explaining. First, decide if the call should be issued in DTN mode or peer mode (not implemented yet). If neither `-d` nor `-p` is given, the procedure will be issued transparently using the best option (not implemented yet) Then, specify a server where the procedure should be executed. It can be a SID for a implicit server, `any` for any server or `all` or `broadcast` for all servers. Then, you need the name of the procedure and all arguments. Finally, you can specify a path to the `rpc.conf` file.
 
 **Note:** The client will not stop waiting for a result. You have to stop the client with `SIGTERM` if you think it takes to long.
@@ -109,10 +139,23 @@ The arguments should be self explaining. First, decide if the call should be iss
 
 **Note:** If you need a file for the procedure, the first argument has to be `file` and the second has to be the path to the file. Furthermore, it is only possible to send one file per call. If you need more, they have to be packed (e.g. `tar`) and the server has to take care about unpacking. If the file is a file, it can also be only one per call. You have to unpack it if required.
 
+
+### Jobfile layout
+```
+[client_sid=X]
+# comments...
+| FILTER [FILTER ...]
+any|server_sid procedure arguments [arguments ...] | FILTER [FILTER ...]
+any|server_sid procedure arguments <output of first procedure>
+[...]
+```
+Note: keep in mind, that an inputfile is always the first argument
+
+
 ### Server
 
 ```
-usage: ./dtn_rpyc -l [-h] [-d | -p | -f CONFIG]
+usage: ./dtn_rpyc -l [-h] [-d | -p | -f CONFIG] [-nd]
 
 Start the server listening for RPCs ...
 
@@ -122,6 +165,7 @@ optional arguments:
   -p, --peer            ... in direct peer mode. (NOT IMPLEMENTED YET)
   -f CONFIG, --config CONFIG
                         Configuration file
+  -nd --delete          FLAG: if set, files are kept during cascading process
 ```
 
 Again, the arguments should be self explaining. You can again decide either DTN mode, peer mode (not implemented yet) or both, if neither `-p` nor `-d` is given. You have also to provide a path to the config file.
@@ -129,3 +173,9 @@ Again, the arguments should be self explaining. You can again decide either DTN 
 **Note:** See [RPC binaries (server only)](#rpc-binaries-server-only) section above!
 
 **Note:** It is only possible to receive and return one file per call. If more files should be returned, you have to pack them (e.g. `tar`). Furthermore, the `return_type` of the procedure has to be `file` to instruct the server to return the path in the result as a file.
+
+### Known Bugs
+
+fast mode: crash after two cleanup actions after some jumps, due to an update manifest which doesnt belong to the server
+Cleanup works only once for each server-server/client combination. Dunno why, but assume a uniqueness problem
+

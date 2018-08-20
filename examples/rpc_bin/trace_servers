@@ -1,0 +1,8 @@
+#!/bin/bash
+
+FILENAME=$1
+HOSTNAME=${uname -n}
+echo $HOSTNAME >> $1
+echo $1
+
+exit 0

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+FILENAME=$1
+#RESULTNAME="$FILENAME"
+
+zip -q $FILENAME $FILENAME
+FILENAME=${FILENAME%.}
+echo $FILENAME.zip
+exit 0

@@ -4,7 +4,12 @@
 This module contains all functions needed by the DTN-RPyC client, especially
 the call functions.
 '''
+# TODO refactor
+# TODO global filter in jobfile
+#
 
+import os
+import random
 import time
 import math
 import restful
@@ -12,9 +17,12 @@ import utilities
 from utilities import pdebug, pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP
 import threading
 import sys
-import signal
 import filter_servers
+from job import Status, Job, FileNotFound
+
 my_sid = None
+PROCEDURES = {}
+
 
 def rpc_for_me(potential_result, name, args, sid):
     ''' Helper function to decide if the received RPC result is for the client.
@@ -32,17 +40,26 @@ def rpc_for_me(potential_result, name, args, sid):
         and potential_result.args == args \
         and potential_result.recipient == sid
 
-def client_find_server(rhiz, name, args, server = False):
-    '''Searches a server, which offers the desired procedure.
-    Args:
-        rhiz (Rhizome):     Rhizome connection to Serval
-        name (str):         The name of the desired procedure
-        args (list(str)):   All arguments of the procedure in a list.
+def client_find_procedures(rhiz):
+    bundles = rhiz.get_bundlelist()
+    if not bundles:
+        return None
+    for bundle in bundles:
+        if not bundle.service == 'RPC_OFFER':
+            continue
+        # We found an offer bundle. Therefore download the content...
+        offers = rhiz.get_decrypted(bundle.id).split('\n')
+        # ... iterate over the lines and see if this is the procedure we searching for.
+        if bundle.name not in PROCEDURES:
+            PROCEDURES[bundle.name] = []
+            for offer in offers:
+                procedure = offer.split(' ')
+                if procedure[0] == '':
+                    break
+                # save procedures and argument types in a dict for later usage
+                PROCEDURES[bundle.name].append(procedure[1:])
 
-    Returns:
-        str: SID of the server or None, if not found.
-    '''
-    global my_sid
+def client_find_server(rhiz, name, args, server=False):
     # If there are no bundles, the are no servers offering anything. Abort.
     bundles = rhiz.get_bundlelist()
     if not bundles:
@@ -53,26 +70,64 @@ def client_find_server(rhiz, name, args, server = False):
             continue
         # We found an offer bundle. Therefore download the content...
         offers = rhiz.get_decrypted(bundle.id).split('\n')
-
         # ... iterate over the lines and see if this is the procedure we searching for.
         for offer in offers:
             procedure = offer.split(' ')
             if procedure[0] == '':
                break
-            if procedure[1] == name and len(procedure[2:]) == len(args) and bundle.name:
+            if procedure[1] == name and bundle.name:
+            #if procedure[1] == name ''' and len(procedure[2:]) == len(args)''' and bundle.name:
                 if server:
-                    if bundle.name not in server_list and bundle.id is not my_sid:
+                    if bundle.name not in server_list:
                         server_list.append(bundle.name)
                 else:
                     return bundle.name
             else:
                 continue
-    if len(server_list) > 0:
         return server_list
-    else:
-        return None
 
-def client_call_cc_dtn(server, name, args, file = None, filter = None):
+def choose_server(server_list, distribution='R', joblist=None, my_sid=None):
+    '''
+    Returns a server from a list by a given distribution:
+        R: Random server
+        E: Even distributed ~ choose a server which hasnt executed a procedure yet
+        F: First server
+    '''
+
+    if my_sid is not None and my_sid.sid in server_list:
+        server_list.remove(my_sid.sid)
+
+    if len(server_list) == 0:
+        return []
+
+    if distribution == 'R':
+        pdebug('Choose random server')
+        _random = random.randint(0, len(server_list)-1)
+        return server_list[_random]
+    elif distribution == 'E':
+        pdebug('Choose a server even distributed')
+        if joblist == None:
+            return choose_server(server_list, distribution='R', my_sid=my_sid)
+        # get all server which executed a procedure already
+        p_set = set()
+        s_set = set()
+        for job in joblist:
+            if job.status == Status.DONE:
+                p_set.add(job.server)
+        for server in server_list:
+            s_set.add(server)
+        # convert to list again
+        serverset = list(s_set.difference(p_set))
+        if len(serverset) > 0:
+            return serverset[-1]
+        # all servers executed a procedure -> start over but random
+        if len(server_list) > 0 and len(p_set) > 0:
+            return choose_server(server_list, distribution='R', my_sid=my_sid)
+    else:
+        pdebug('Choose the last server in the list')
+        return server_list[-1]
+
+def client_call_cc_dtn(server, name, args, file=None, filter=None, job=True):
     ''' Main calling function for cascading job distribution in DTN mode.
 
     Args:
@@ -103,16 +158,17 @@ def client_call_cc_dtn(server, name, args, file = None, filter = None):
      # If the server address is 'any', we have to find a server, which offers this procedure.
     if server == 'any':
         server = filter_servers.client_find_server(rhiz, filter, name) if (filter is not None) else client_find_server(rhiz, name, args)
-        if not server:
+        if server is None or len(server) == 0:
             pfatal('Could not find any server offering the procedure. Aborting.')
             return
     # write job task file if its in cascading mode
     elif type(server) is list and len(server) > 1 and file != None:
         if len(server) != len(name):
-            pdebug("Not creating cascade file")
+            pdebug("Not creating jobfile")
         else:
             pinfo('Creating cascading jobfile')
-            f = open('jobtask_' + my_sid.sid + '.jb', 'w+')
+            timestamp = str(math.floor(time.time()))
+            f = open('jobtask_' + my_sid.sid + '_' + timestamp + '.jb', 'w+')
             f.write("client_sid=" + my_sid.sid + '\n')
             for x in range(len(server)):
                 if  x < len(args):
@@ -138,15 +194,24 @@ def client_call_cc_dtn(server, name, args, file = None, filter = None):
             if file != None:
                 jobfile = ['file', file]
             else:
-                jobfile = ['file', 'jobtask_' + my_sid.sid + ".jb"]
+                jobfile = ['file', 'jobtask_' + my_sid.sid + '_' + timestamp + ".jb"]
                 args = jobfile
             pdebug('prepared cascading jobfile')
-            call_bundle_fields = [
-                ('type', CALL),
-                ('name', 'file'),
-                ('args', 'jobfile'),
-                ('sender', my_sid.sid)
-            ]
+            if not job:
+                call_bundle_fields = [
+                    ('type', CALL),
+                    ('name', 'file'),
+                    ('args', 'file'),
+                    ('sender', my_sid.sid)
+                ]
+            else:
+                joined_args = 'jobfile'
+                call_bundle_fields = [
+                    ('type', CALL),
+                    ('name', 'file'),
+                    ('args', 'jobfile'),
+                    ('sender', my_sid.sid)
+                ]
             call_bundle_fields.append(('recipient', server[0]))
             server_list = server[-1]
         else:
@@ -170,26 +235,24 @@ def client_call_cc_dtn(server, name, args, file = None, filter = None):
         payload = open(args[1], 'rb')
 
     # Insert the call payload, i.e. call the remote procedure.
-    rhiz.insert(call_bundle, payload, my_sid.sid)
-
+    ibundle = rhiz.insert(call_bundle, payload, my_sid.sid)
+    ibundle = ibundle.split('\n')
+    bundle_list = []
+    for val in ibundle:
+        val = val.split('=')
+        if len(val) > 1:
+            bundle_list.append((val[0], val[1]))
+    #print('Bundle: -- ' + ibundle)
     # Immediatelly after the insert, get the token from the store,
     # to not parse the entire bundlelist.
     token = rhiz.get_bundlelist()[0].__dict__['.token']
 
-    thread_expired = False
     ack_received = False
-    counter = 0
-    while not ack_received or counter != len(server_list):
+    pdebug('Server is waiting for ACK.')
+    while not ack_received:
         bundles = rhiz.get_bundlelist(token=token)
-
-        if thread_expired:
-            break
-
         if bundles:
             for bundle in bundles:
-                if thread_expired:
-                    break
-
                 # The first bundle is the most recent. Therefore, we have to save the new token.
                 token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
 
@@ -199,17 +262,20 @@ def client_call_cc_dtn(server, name, args, file = None, filter = None):
                 # Before further checks, we have to download the manifest
                 # to have all metadata available.
                 potential_result = rhiz.get_manifest(bundle.id)
-
                 if type(name) is list:
                     name = name[-1]
+
                 if not rpc_for_me(potential_result, name, joined_args, my_sid.sid):
                     continue
 
                 # At this point, we know that there is a RPC file in the store
                 # and it is for us. Start parsing.
                 if potential_result.type == ACK:
-                    pinfo('Received ACK. Not my business anymore.')
+                    pinfo('Received ACK. Preparing cleanup.')
                     ack_received = True
+                    break
+    newbundle = utilities.make_bundle(bundle_list, False)
+    return (newbundle, bundle.id)
 
 def update_file(file, linecounter, sid):
     f = open(file, 'r+')
@@ -224,7 +290,31 @@ def update_file(file, linecounter, sid):
     else:
         return False
 
-def client_call_dtn(server, name, args, timeout = None, filter = None):
+def create_jobfile(server_list, name_list, arg_list, filter_list = None):
+    '''Creates a jobfile with the following arguments:
+        serverlist (list of strings): predefined servers.
+        name_list (list of procedures): given procedures.
+        arg_list (list of string): defined procedures.
+        filter_list (dict of filters): optional global filters
+        '''
+        # TODO needs filter implementation
+    if len(server_list) != len(name_list):
+        pfatal("More or less jobs are found for each server. Aborting!")
+        return None
+    pinfo('Creating cascading jobfile')
+    timestamp = str(math.floor(time.time()))
+    filename = 'jobtask_' + my_sid.sid + '_' + timestamp + '.jb'
+    f = open('jobtask_' + my_sid.sid + '_' + timestamp + '.jb', 'w+')
+    f.write('client_sid=' + my_sid.sid + '\n')
+    for x in range(len(server_list)):
+        if  x < len(arg_list):
+            f.write(server_list[x] + ' ' + name_list[x] + ' ' + arg_list[x] + '\n')
+        else:
+            f.write(server_list[x] + ' ' + name_list[x] + '\n')
+    f.close()
+    return filename
+
+def client_call_dtn(server=None, name=None, args=None, timeout=None, filter=None, jobfile=None, delete=False):
     ''' Main calling function for DTN mode.
 
     Args:
@@ -232,7 +322,11 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
         name (str):             Name of the desired procedure.
         args (list of strings): Arguments of the desired procedure.
     '''
-
+    filename = None
+    server_list = None
+    if not ((server is None and name is None and args is None) ^ (jobfile is None)):
+        pdebug("Nothing true")
+        return
     # Create a RESTful connection to Serval with the parameters from the config file
     # and get the Rhizome connection.
     connection = restful.RestfulConnection(
@@ -258,60 +352,96 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
     # If the server address is 'any', we have to find a server, which offers this procedure.
     if server == 'any':
         server = filter_servers.client_find_server(rhiz, filter, name) if (filter is not None) else client_find_server(rhiz, name, args)
+        # TODO DEBUG
+        #print('Server: %s\nProcedure: %s\nArgs: %s\n' % (server, name, args))
+        first_job = Job(server, name, args, 'OPEN', 0, filter)
         if filter is not None:
             server = filter_servers.parse_server_caps(server, filter)
         if not server:
-            pfatal('Could not find any server offering the procedure. Aborting.')
+            pfatal('Could not find any server offering the procedure.')
             return
     # write job task file if its in cascading mode
     elif type(server) is list:# and len(server) > 1:
-        if len(server) != len(name):
+        filename = create_jobfile(server, name, args, filter)
+        job = utilities.parse_jobfile(filename)
+        if filename is None:
+            pfatal("An error occurred during jobfile creation.")
             return None
-        pinfo('Creating cascading jobfile')
-        timestamp = str(math.floor(time.time()))
-        f = open('jobtask_' + my_sid.sid + '_' + timestamp + '.jb', 'w+')
-        f.write('client_sid=' + my_sid.sid + '\n')
-        for x in range(len(server)):
-            if  x < len(args):
-                f.write(server[x] + ' ' + name[x] + ' ' + args[x] + '\n')
-            else:
-                f.write(server[x] + ' ' + name[x] + '\n')
-        f.close()
+    elif jobfile is not None:
+        # parse the jobfile
+        job = utilities.parse_jobfile(jobfile)
+        if job.client_sid is None:
+            # write own sid into the file
+            pdebug('writing csid into jobfile')
+            f = open(jobfile, 'r+')
+            if f is not None:
+                #check each line
+                lines = f.readlines()
+                lines.insert(0, "client_sid=" + my_sid.sid + "\n")
+                f.seek(0)
+                for line in lines:
+                    f.write(line)
+                f.close()
+                job=utilities.parse_jobfile(jobfile)
 
+        if job is None:
+            pfatal("An error occurred during jobfile parsing.")
+            return None
+        for j in job.joblist:
+            j.job_print()
     # The server expects the arguments in a single string delimited with '|'.
-    joined_args = '|'.join(args)
+    # FIXME args are not set
+    if args is not None:
+        joined_args = '|'.join(args)
 
     call_bundle_fields = [
         ('type', CALL)
     ]
 
+    # change code below to accept the new data structure
     # If this is an 'all' or 'broadcast' call, we must not provide sender and recipient.
     recipient = None
+    if jobfile is not None:
+        filename = jobfile
+        first_job = job.joblist[0]
     if not server == 'all' and not server == 'broadcast':
-        if type(server) is list and len(server) > 1:
+        if (type(server) is list and len(server) > 1) or jobfile is not None:
             # send jobfile to the first server
-            jobfile = ['file', 'jobtask_' + my_sid.sid + '_' + timestamp + '.jb']
-            procedure_name = name
-            procedure_args = args
+            jobfile = ['file', filename]
+            #procedure_name = name
             args = jobfile
             name = 'file'
             joined_args = 'jobfile'
             pdebug('prepared cascading jobfile')
-            recipient = server[0]
+            #recipient = server[0]
+            if first_job.filter_dict:
+                filter = first_job.filter_dict
+            recipient = first_job.server
             if recipient == 'any':
-                server = filter_servers.client_find_server(rhiz, filter, procedure_name) if (filter is not None) else client_find_server(rhiz, procedure_name, args)
+                pdebug('Finding a server')
+                server = filter_servers.client_find_server(rhiz, filter, first_job.procedure) if (bool(filter)) else client_find_server(rhiz, first_job.procedure, args)
                 if filter is not None:
-                    server = filter_servers.parse_server_caps(server, filter)
+                    server = list(filter_servers.parse_server_caps(server, filter))
+                if server is None or len(server) == 0:
+                    pfatal("No server(s) found")
+                    return None
+                recipient = server
+                # obsolete
                 if type(recipient) is list:
                     recipient = recipient[0]
-                update_file('jobtask_' + my_sid.sid + '_' + timestamp + '.jb', 1, recipient)
-            server_list = server[-1]
+                # update the file
+                update_file(filename, first_job.line, recipient)
+                # check if this is still necessary
+                if type(server) is list:
+                    server_list = server[-1]
+                else:
+                    server_list = server
         else:
             recipient = server
             server_list = [server]
     # Find all servers which can execute the given procedure
     else:
-        server_list = filter_servers.client_find_server(rhiz, filter, name) if (filter is not None) else client_find_server(rhiz, name, args)
+        server_list = filter_servers.client_find_server(rhiz, filter, name) if (bool(filter)) else client_find_server(rhiz, name, args)
         if filter is not None:
             server_list = filter_servers.parse_server_caps(server, filter)
     # Prepare the call bundle
@@ -319,11 +449,25 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
     call_bundle_fields.append(('name', name))
     call_bundle_fields.append(('args', joined_args))
     call_bundle_fields.append(('sender', my_sid.sid))
+    # TODO recipient is either a list or a set for some reason
     if recipient is not None:
-        for x in recipient: recipient = x; break;
-        call_bundle_fields.append(('recipient', recipient))
-
+        if type(recipient) is list:
+            recipient = recipient[0]
+        elif type(recipient) is set:
+            for x in recipient:
+                recipient = x
+                break
+    call_bundle_fields.append(('recipient', recipient))
     call_bundle = utilities.make_bundle(call_bundle_fields)
+
+    # check if an argument is a file
+    argument_type = []
+    client_find_procedures(rhiz)
+    for key in PROCEDURES:
+        if key == recipient:
+            for procedure in PROCEDURES[key]:
+                if procedure[0] == first_job.procedure:
+                    argument_type = procedure
 
     # ... and the payload. By convention, if the first argument is 'file' and
     # there are exactly two arguments, we assume that the second argument
@@ -331,16 +475,56 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
     # as the payload to the insert function.
     # Otherwise, the payload will be empty.
     payload = ''
-    if args[0] == 'file' and len(args) == 2:
+    if args[0] == 'file' and len(args) == 2 or 'file' in argument_type:
         pdebug("Payload is set to file")
-        payload = open(args[1], 'rb')
+        # set the payload to file
+        c = 1
+        zip_list = []
+        if filename is None:
+            filename = args[0]
+        #args.insert(0, 'file')
+        if argument_type is not None and 'file' in argument_type and len(args[1:]) == 1: # TODO more arguments
+            # FIXME might be obsolete
+            if len(args) != len(argument_type):
+                pfatal('Argc doesnt match')
+                return
+            # FIXME obsolte?
+            for argc in range(len(argument_type)):
+                if argument_type[argc] == 'file':
+                    c = argc
+                    if not os.path.isfile(first_job.arguments[0]):
+                        pfatal("File '%s' not found. Aborting" % first_job.arguments[0])
+                        return
+                    zip_list = first_job.arguments
+        # create zipfile
+        zip_list.append(filename)
+        zip_list = list(map(str.strip, zip_list))
+        zip_file = utilities.make_zip(zip_list, my_sid.sid + '_' + str(math.floor(time.time())))
+
+        payload = open(zip_file, 'rb')
 
     # Insert the call payload, i.e. call the remote procedure.
-    rhiz.insert(call_bundle, payload, my_sid.sid)
+    mybundle = rhiz.insert(call_bundle, payload, my_sid.sid)
+
+    # save bundle id for cleanup
+    mybundle = mybundle.split('\n')
+    bundle_list = []
+    for val in mybundle:
+        val = val.split('=')
+        if len(val) > 1:
+            bundle_list.append((val[0], val[1]))
+    mybundle = utilities.make_bundle(bundle_list, False)
+    mymanifest = rhiz.get_manifest(mybundle.id)
 
     # Immediatelly after the insert, get the token from the store,
     # to not parse the entire bundlelist.
     token = rhiz.get_bundlelist()[0].__dict__['.token']
+
+    # delete zip if its exist
+    if args[0] == 'file' and len(args) == 2 or 'file' in argument_type:
+        if not delete and os.path.isfile(zip_file):
+            pdebug('Deleting ' + zip_file)
+            os.remove(zip_file)
     # Start the waiting loop, until the result arrives.
     if timeout:
         pinfo('Waiting for result for ' + timeout + ' seconds.')
@@ -364,7 +548,10 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
         t = threading.Timer(int(timeout), waitThread)
         t.start()
 
-    while not result_received or counter != len(server_list):
+    if server_list is None:
+        server_list = ['any']
+
+    while not (result_received or counter == len(server_list)):
         bundles = rhiz.get_bundlelist(token=token)
 
         if thread_expired:
@@ -375,6 +562,8 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
                 if thread_expired:
                     break
 
+                if result_received and server is not 'all' and server is not 'broadcast':
+                    break
                 # The first bundle is the most recent. Therefore, we have to save the new token.
                 token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
 
@@ -391,7 +580,11 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
                 # At this point, we know that there is a RPC file in the store
                 # and it is for us. Start parsing.
                 if potential_result.type == ACK:
-                    pinfo('Received ACK. Will wait for result.')
+                    pinfo('Received ACK. Will wait for result. Preparing cleanup')
+                    # TODO CLEANUP
+                    clear_bundle = utilities.make_bundle([('type', CLEANUP)], True)
+                    #rhiz.insert(clear_bundle, '', my_sid.sid, mymanifest.id)
+
 
                 if potential_result.type == RESULT:
                     # It is possible, that the result is a file.
@@ -421,10 +614,10 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
                         ('args', args),
                         ('sender', my_sid.sid)
                     ])
-                    rhiz.insert(clear_bundle, '', my_sid.sid, call_bundle.id)
+                    # FIXME rework cleanup
+                    #rhiz.insert(clear_bundle, '', my_sid.sid, call_bundle.id)
 
                     pinfo('Received result: %s' % result_str)
-
                     # If the call was broadcastet, we do not want to stop here.
                     if server == 'all' or server == 'broadcast':
                         counter = counter + 1
@@ -434,6 +627,7 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
                     result_received = True
 
                 if potential_result.type == ERROR:
+                    pfatal('Bundle id: %s' % bundle.id)
                     pfatal(
                         'Received error response with the following message: %s' \
                         % potential_result.result
@@ -446,6 +640,7 @@ def client_call_dtn(server, name, args, timeout = None, filter = None):
                     result_received = True
 
         time.sleep(1)
+
 
 def signal_handler(_, __):
     ''' Just a simple CTRL-C handler.
