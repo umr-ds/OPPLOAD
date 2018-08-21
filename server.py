@@ -5,10 +5,10 @@ import subprocess
 import os
 import threading
 from _thread import start_new_thread
-import restful
+from pyserval.client import Client
 import utilities
 from utilities import pdebug, pinfo, pfatal, pwarn
-from utilities import ACK, CALL, CLEANUP, ERROR, RESULT
+from utilities import ACK, CALL, CLEANUP, ERROR, RESULT, CONFIGURATION
 import client
 import logging
 from job import Status
@@ -18,6 +18,9 @@ import sys
 import shutil
 import math
 
+# This is the global serval RESTful client object
+SERVAL = None
+
 # A threading lock for critical parts like updating offered procedures.
 LOCK = threading.RLock()
 
@@ -26,14 +29,8 @@ RUNNING = True
 STOPPED = False
 SERVER_MODE = STOPPED
 
-# List of offered procedures.
-OFFERED_PROCEDURES = None
-
 # A dict where all bundles are stored which have to be cleaned up after execution.
 CLEANUP_BUNDLES = {}
-
-# The ID for the publish bundle.
-PUBLISH_BUNDLE_ID = None
 
 class Procedure(object):
     '''A simple procedure class.
@@ -50,31 +47,42 @@ class Procedure(object):
     def __str__(self):
         return '%s %s %s' % (self.return_type, self.name, ' '.join(self.args))
 
-def server_publish_procedures(rhiz, my_sid):
+def server_publish_procedures():
     '''Publishes all offered procedures.
     '''
-    update_published_thread = threading.Timer(30, server_publish_procedures, (rhiz, my_sid))
-    update_published_thread.daemon = True
-    update_published_thread.start()
 
-    global PUBLISH_BUNDLE_ID
+    pdebug("publishing...")
+
+    offered_procedures = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
 
     payload = ''
+    # To not run this code multiple times at the same time, we use a simple LOCK.
     with LOCK:
-        for procedure in OFFERED_PROCEDURES:
+        # First, see if we already publishing our procedures. If so, get the bundle_id
+        offer_bundle_id = None
+        bundles = SERVAL.rhizome.get_bundlelist()
+        for bundle in bundles:
+            if bundle.from_here == 1 and bundle.manifest.service == utilities.OFFER:
+                offer_bundle_id = bundle.bundle_id
+                break
+
+        # Build the payload containing all offered procedures
+        for procedure in offered_procedures:
             procedure_str = str(procedure)
             payload = payload + procedure_str
 
-        publish_bundle = utilities.make_bundle([
-            ('service', 'RPC_OFFER'),
-            ('name', my_sid)
-        ], rpc_service=False)
-
-        if PUBLISH_BUNDLE_ID:
-            rhiz.insert(publish_bundle, payload, my_sid, PUBLISH_BUNDLE_ID)
+        # If we already publish procedures, just update.
+        # Otherwise, insert a new bundle.
+        if offer_bundle_id:
+            procedures_bundle = SERVAL.rhizome.get_bundle(offer_bundle_id)
+            procedures_bundle.update_payload(payload)
         else:
-            rhiz.insert(publish_bundle, payload, my_sid)
-            PUBLISH_BUNDLE_ID = publish_bundle.id
+            procedures_bundle = SERVAL.rhizome.new_bundle(
+                name=SERVAL.keyring.default_identity().sid,
+                payload=payload,
+                use_default_identity=True,
+                service=utilities.OFFER
+            )
 
 def get_offered_procedures(rpc_defs):
     '''Parses the rpc definitions file and stores all of them in a list.
@@ -84,20 +92,17 @@ def get_offered_procedures(rpc_defs):
     Returns:
         list(Procedure): A list of parsed Procedures.
     '''
-    update_offers_thread = threading.Timer(30, get_offered_procedures, (rpc_defs, ))
-    update_offers_thread.daemon = True
-    update_offers_thread.start()
 
-    global OFFERED_PROCEDURES
-    with LOCK:
-        OFFERED_PROCEDURES = set()
-        with open(rpc_defs, 'r') as conf_file:
-            for procedure_definition in conf_file:
-                procedure_definition_list = procedure_definition.split(' ')
-                return_type = procedure_definition_list[0]
-                name = procedure_definition_list[1]
-                args = procedure_definition_list[2:]
-                OFFERED_PROCEDURES.add(Procedure(return_type=return_type, name=name, args=args))
+    offered_procedures = set()
+    with open(rpc_defs, 'r') as conf_file:
+        for procedure_definition in conf_file:
+            procedure_definition_list = procedure_definition.split(' ')
+            return_type = procedure_definition_list[0]
+            name = procedure_definition_list[1]
+            args = procedure_definition_list[2:]
+            offered_procedures.add(Procedure(return_type=return_type, name=name, args=args))
+    
+    return offered_procedures
 
 def server_offering_procedure(procedure):
     '''Checks, if the given procedure is offered by the server.
@@ -109,7 +114,7 @@ def server_offering_procedure(procedure):
     '''
     with LOCK:
         try:
-            for offered_procedure in OFFERED_PROCEDURES:
+            for offered_procedure in get_offered_procedures(utilities.CONFIGURATION['rpcs']):
                 if offered_procedure.name == procedure.name:
                     if len(offered_procedure.args) != len(procedure.args):
                         raise ArgumentMissmatchError
@@ -135,10 +140,12 @@ def server_offering_procedure(procedure):
         except ArgumentMissmatchError:
             pfatal('Procedure arguments dont match the demanded arguments! Too few or too many arguments.')
             raise
+
 def getArgumentType(tprocedure):
     '''Returns the needed argument type(s) of a given procedure'''
-    if OFFERED_PROCEDURES != None and len(OFFERED_PROCEDURES) > 0:
-        for procedure in OFFERED_PROCEDURES:
+    offered_procedure = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
+    if offered_procedure != None and len(offered_procedure) > 0:
+        for procedure in offered_procedure:
             if procedure.name == tprocedure:
                 return procedure.args
     return None
@@ -146,8 +153,9 @@ def getArgumentType(tprocedure):
 
 def getResultType(tprocedure):
     '''Returns the result type of a given procedure'''
-    if OFFERED_PROCEDURES != None and len(OFFERED_PROCEDURES) > 0:
-        for procedure in OFFERED_PROCEDURES:
+    offered_procedure = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
+    if offered_procedure != None and len(offered_procedure) > 0:
+        for procedure in offered_procedure:
             if procedure.name == tprocedure:
                 return procedure.return_type
     return None
@@ -160,8 +168,6 @@ def server_parse_call(call):
     Returns:
         Procedure: The parsed procedure.
     '''
-    #FIXME DEBUG
-    pdebug('SERVER_PARSE_CALL')
     return Procedure(name=call.name, args=call.args.split('|'))
 
 def server_execute_procedure(procedure):
@@ -190,28 +196,22 @@ def server_execute_procedure(procedure):
         pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
         return (0, out.rstrip())
 
-def server_thread_handle_call(potential_call, rhiz, my_sid, delete):
-    LOG_FILENAME = '/tmp/server_' + str(my_sid.sid) + '.log'
+def server_thread_handle_call(potential_call, delete):
+    LOG_FILENAME = '/tmp/server_{}.log'.format(SERVAL.keyring.default_identity().sid)
     logging.basicConfig(filename=LOG_FILENAME, level=logging.ERROR)
+
     try:
-        global global_jobfile
-        global global_client_sid
-        server_handle_call(potential_call, rhiz, my_sid, delete)
-        # cleanup
-        if 'global_jobfile' in globals():
-            del global_jobfile
-        elif 'global_client_sid' in globals():
-            del global_client_sid
+        server_handle_call(potential_call, delete)
     except (KeyboardInterrupt, SystemExit):
         raise
     except:
-        utilities.pfatal('An error occured: '+ str(sys.exc_info()[0]))
+        pfatal('An error occured: {}'.format(str(sys.exc_info()[0])))
         # Error in handle thread -> send errorlog to client
         logging.exception('Got exception on thread handler')
         # check if serval is running
         if not utilities.serval_running():
             # start serval again
-            utilities.pwarn('Serval crashed. Restarting it')
+            pwarn('Serval crashed. Restarting it')
             os.system('start_serval')
         if 'global_client_sid' in globals():
             ziplist = []
@@ -221,22 +221,19 @@ def server_thread_handle_call(potential_call, rhiz, my_sid, delete):
                 ziplist.append(global_jobfile)
             ziplist.append(LOG_FILENAME)
             # creating an error_zip
-            ret_zip = utilities.make_zip(ziplist, name="error_"+my_sid.sid)
+            ret_zip = utilities.make_zip(ziplist, name="error_"+SERVAL.keyring.default_identity().sid)
             procedure = server_parse_call(potential_call)
             error_bundle = utilities.make_bundle([
                 ('name', procedure.name),
-                ('sender', my_sid.sid),
+                ('sender', SERVAL.keyring.default_identity().sid),
                 ('recipient', global_client_sid),
                 ('args', procedure.args[-1]),
                 ('type', ERROR),
                 ('result', str(sys.exc_info()[0]))
             ])
-
-            # send error report to client
-            utilities.pdebug('Send logfile to: ' + global_client_sid)
             # sending files
             payload = open(ret_zip, 'rb')
-            rhiz.insert(error_bundle, payload, my_sid.sid)
+            rhizome.insert(error_bundle, payload, SERVAL.keyring.default_identity().sid)
             if not delete:
                 pdebug('Deleting the created error zip: ' + ret_zip)
                 os.remove(ret_zip)
@@ -249,11 +246,10 @@ def server_thread_handle_call(potential_call, rhiz, my_sid, delete):
             utilities.fatal('Client sid not found. Aborting.')
             raise
 
-def server_handle_call(potential_call, rhiz, my_sid, delete):
+def server_handle_call(potential_call, delete):
     '''Main handler function for an incoming call.
     Args:
         potential_call (Bundle):    The potential call, which has to be handled.
-        rhiz (Rhizome):             The Rhizome connection
         my_sid (ServalIdentity):    ServalIdentity of the server
     '''
     # TODO DEBUG
@@ -261,22 +257,22 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
     pinfo('Received call. Will check if procedure is offered.')
     # First step, parse the potential call.
     procedure = server_parse_call(potential_call)
-    global global_client_sid
-    # TODO Sending error-log back to client
-    if procedure.name == "file" or server_offering_procedure(procedure):
-        global_client_sid = potential_call.sender
+    client_sid = None
+
+    if server_offering_procedure(procedure):
+        client_sid = potential_call.sender
         # If the server offers the procedure,
         # we first have to download the file because it will be removed as soon we send the ack.
-        # the if in the next line might be obscolete, because only the text is sent to all servers not the file itself
+        # If in the next line might be obscolete, because only the text is sent to all servers not the file itself
         if procedure.args[0] == 'jobfile':
             path = '/tmp/%s_%s' % (procedure.name, potential_call.version)
-            rhiz.get_decrypted_to_file(potential_call.id, path)
+            rhizome.get_decrypted_to_file(potential_call.id, path)
             # FIXME sometimes the file is not decrypted
             job = None
             # getting the zipfile
             if utilities.is_zipfile(path):
                 pdebug('zipfile received.')
-                file_list = utilities.extract_zip(path, potential_call.id, my_sid)
+                file_list = utilities.extract_zip(path, potential_call.id, SERVAL.keyring.default_identity())
                 # parse jobfile
                 for _file in file_list:
                     if _file.endswith('.jb'):
@@ -293,8 +289,8 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
                 pdebug('Jobfile is malformed')
                 raise MalformedJobfileError
             _file = global_jobfile
-            # update the global_client_sid
-            global_client_sid = job.client_sid
+            # update the client_sid
+            client_sid = job.client_sid
             pdebug('Received jobs:')
             for x in job.joblist:
                 x.job_print()
@@ -306,7 +302,7 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
             possible_next_job = None
             # get next task aswell
             for jb in range(len(job.joblist)):
-                if job.joblist[jb].status == Status.OPEN and job.joblist[jb].server == my_sid.sid:
+                if job.joblist[jb].status == Status.OPEN and job.joblist[jb].server == SERVAL.keyring.default_identity().sid:
                     pdebug('job found: %s' % job.joblist[jb].procedure)
                     possible_job = job.joblist[jb]
                     if jb+1 < len(job.joblist):
@@ -322,12 +318,12 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
                 ack_bundle = utilities.make_bundle([
                     ('type', ACK),
                     ('name', potential_call.name),
-                    ('sender', my_sid.sid),
+                    ('sender', SERVAL.keyring.default_identity().sid),
                     ('recipient', potential_call.sender),
                     ('args', potential_call.args),
                     ('time', dt)
                 ])
-                rhiz.insert(ack_bundle, '', my_sid.sid)
+                rhizome.insert(ack_bundle, '', SERVAL.keyring.default_identity().sid)
                 pinfo('Ack is sent. Will execute procedure.')
                 # After sending the ACK, start the execution.
                 code, result = server_execute_procedure(n_procedure)
@@ -351,12 +347,12 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
                     if possible_next_job.server == 'any':
                         # fetch a server which offers the given procedure, and remove yourself from the set
                         pdebug('Finding a new server')
-                        possible_server = filter_servers.client_find_server(rhiz, possible_next_job.filter_dict, possible_next_job.procedure) if (bool(possible_next_job.filter_dict)) else client.client_find_server(rhiz, possible_next_job.procedure, possible_next_job.arguments, True)
+                        possible_server = filter_servers.client_find_server(possible_next_job.filter_dict, possible_next_job.procedure) if (bool(possible_next_job.filter_dict)) else client.client_find_server(possible_next_job.procedure, possible_next_job.arguments, True)
                         if len(possible_server) == 0:
                             pfatal('No server nearby who executes the following procedure: %s. Aborting' % possible_next_job.procedure)
                             raise ServerNotFoundError
                         if not bool(possible_next_job.filter_dict):
-                            possible_server = client.choose_server(possible_server, distribution, job.joblist, my_sid=my_sid)
+                            possible_server = client.choose_server(possible_server, distribution, job.joblist, SERVAL.keyring.default_identity().sid)
                         if bool(possible_next_job.filter_dict):
                             possible_server = list(filter_servers.parse_server_caps(possible_server, possible_next_job.filter_dict))
                         if len(possible_server) == 0:
@@ -392,9 +388,9 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
                     if n_procedure.return_type == 'file':
                         # Send the resultfile to the next server, write the filehash to the jobfile and send it too
                         # make zip
-                        payld = utilities.make_zip([result_decoded, _file], name=my_sid.sid + '_' + str(math.floor(time.time())))
+                        payld = utilities.make_zip([result_decoded, _file], name=SERVAL.keyring.default_identity().sid+ '_' + str(math.floor(time.time())))
                     else:
-                        payld = utilities.make_zip([_file], name=my_sid.sid + '_' + str(math.floor(time.time())))
+                        payld = utilities.make_zip([_file], name=SERVAL.keyring.default_identity().sid + '_' + str(math.floor(time.time())))
                     if type(possible_server) is list and len(possible_server) > 0:
                         possible_server = possible_server[0]
                     pdebug('Sending new task to tsid: ' + possible_server)
@@ -405,7 +401,7 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
                     cleanup_bundle = client.client_call_cc_dtn([possible_server, '*'], 'file', ['file', payld], payld)
                     #CLEANUP_BUNDLES[potential_call.id] = ack_bundle.id
                     # FIXME test
-                    cleanup_store(cleanup_bundle[0], my_sid.sid, rhiz)
+                    cleanup_store(cleanup_bundle[0])
 
                     os.chdir(cwd)
                     # cleanup of the created directory in /tmp/
@@ -421,11 +417,11 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
                     # name and arguments have to be the orignial one
                     lt = str(time.time())
 
-                    ret = utilities.make_zip([result.decode('utf-8')], name=my_sid.sid + '_' + str(math.floor(time.time())))
+                    ret = utilities.make_zip([result.decode('utf-8')], name=SERVAL.keyring.default_identity().sid + '_' + str(math.floor(time.time())))
 
                     result_bundle_values = [
                         ('name', procedure.name),
-                        ('sender', my_sid.sid),
+                        ('sender', SERVAL.keyring.default_identity().sid),
                         ('recipient', tsid),
                         ('args', procedure.args[-1])
                         ]
@@ -454,7 +450,7 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
                     # The final step. Compile and insert the result bundle.
                     result_bundle = utilities.make_bundle(result_bundle_values)
                     #rhiz.insert(result_bundle, payload, my_sid.sid, ack_bundle.id)
-                    rhiz.insert(result_bundle, payload, my_sid.sid)
+                    rhizome.insert(result_bundle, payload, SERVAL.keyring.default_identity().sid)
                     os.chdir(cwd)
                     # deleting files
                     if not delete:
@@ -473,7 +469,7 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
             # if the incoming call was a file transfer
             if procedure.args[0] == 'file':
                 path = '/tmp/%s_%s' % (procedure.name, potential_call.version)
-                rhiz.get_decrypted_to_file(potential_call.id, path)
+                rhizome.get_decrypted_to_file(potential_call.id, path)
 
             # Compile and insert the ACK bundle.
             # FIXME insert time variable
@@ -481,12 +477,12 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
             ack_bundle = utilities.make_bundle([
                 ('type', ACK),
                 ('name', potential_call.name),
-                ('sender', my_sid.sid),
+                ('sender', SERVAL.keyring.default_identity().sid),
                 ('recipient', potential_call.sender),
                 ('args', potential_call.args),
                 ('time', dt)
             ])
-            rhiz.insert(ack_bundle, '', my_sid.sid)
+            rhizome.insert(ack_bundle, '', SERVAL.keyring.default_identity().sid)
             pinfo('Ack is sent. Will execute procedure.')
 
             # After sending the ACK, start the execution.
@@ -498,7 +494,7 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
             # and send the bundle and payload at the end.
             result_bundle_values = [
                 ('name', potential_call.name),
-                ('sender', my_sid.sid),
+                ('sender', SERVAL.keyring.default_identity().sid),
                 ('recipient', potential_call.sender),
                 ('args', potential_call.args)
             ]
@@ -522,29 +518,27 @@ def server_handle_call(potential_call, rhiz, my_sid, delete):
 
             # The final step. Compile and insert the result bundle.
             result_bundle = utilities.make_bundle(result_bundle_values)
-            rhiz.insert(result_bundle, payload, my_sid.sid, ack_bundle.id)
+            rhizome.insert(result_bundle, payload, SERVAL.keyring.default_identity().sid, ack_bundle.id)
 
     else:
         # In this case, the server does not offer the procedure.
         # Therefore, the client will be informed with an error.
         result_bundle_values = [
             ('name', potential_call.name),
-            ('sender', my_sid.sid),
+            ('sender', SERVAL.keyring.default_identity().sid),
             ('recipient', potential_call.sender),
             ('args', potential_call.args),
             ('type', ERROR),
             ('result', 'Server does not offer procedure.')
         ]
         result_bundle = utilities.make_bundle(result_bundle_values)
-        rhiz.insert(result_bundle, '', my_sid.sid)
+        rhizome.insert(result_bundle, '', SERVAL.keyring.default_identity().sid)
 
-def server_cleanup_store(bundle, sid, rhiz):
+def server_cleanup_store(bundle, sid):
     '''Cleans up all bundles involved in a call
     Args:
         bundle (Bundle):    The bundle which triggers the cleanup
         sid (str):          Author SID for the bundle
-
-        rhiz (Rhizome):     Rhizome connection
     '''
     # Try to lookup the BID for the Bundle to be cleaned,
     # make a new clear bundle based on the gathered BID and insert this bundle.
@@ -553,18 +547,16 @@ def server_cleanup_store(bundle, sid, rhiz):
     try:
         result_bundle_id = CLEANUP_BUNDLES[bundle.id]
         clear_bundle = utilities.make_bundle([('type', CLEANUP)], True)
-        rhiz.insert(clear_bundle, '', sid, result_bundle_id)
+        rhizome.insert(clear_bundle, '', sid, result_bundle_id)
         del CLEANUP_BUNDLES[bundle.id]
     except KeyError:
         return
 
-def cleanup_store(bundle, sid, rhiz):
+def cleanup_store(bundle, sid):
     '''Cleans up all bundles involved in a call
     Args:
         bundle (Bundle):    The bundle which triggers the cleanup
         sid (str):          Author SID for the bundle
-
-        rhiz (Rhizome):     Rhizome connection
     '''
     # Try to lookup the BID for the Bundle to be cleaned,
     # make a new clear bundle based on the gathered BID and insert this bundle.
@@ -574,76 +566,61 @@ def cleanup_store(bundle, sid, rhiz):
         if bundle.id:
             pdebug('Clearing bundle: ' + str(bundle.id))
             clear_bundle = utilities.make_bundle([('type', CLEANUP)], True)
-            rhiz.insert(clear_bundle, '', sid, bundle.id)
+            rhizome.insert(clear_bundle, '', sid, bundle.id)
     except KeyError:
         return
 
-def server_listen_dtn(delete=False):
+def server_listen(delete=False):
     '''Main listening function.
     '''
-    get_offered_procedures(utilities.CONFIGURATION['rpcs'])
-
     global SERVER_MODE
+    global SERVAL
     SERVER_MODE = RUNNING
 
-    # Create a RESTful connection to Serval with the parameters from the config file
-    # and get the Rhizome connection.
-    connection = restful.RestfulConnection(
-        host=utilities.CONFIGURATION['host'],
-        port=int(utilities.CONFIGURATION['port']),
-        user=utilities.CONFIGURATION['user'],
-        passwd=utilities.CONFIGURATION['passwd']
-    )
-    rhiz = connection.rhizome
-
-    # Get the first SID found in Keyring.
-    # Recent versions of Serval do not have a SID by default, which has to be
-    # handled. Therefore, check if we could get a SID.
-    global my_sid
-    my_sid = connection.first_identity
-    if not my_sid:
-        pfatal('The server does not have a SID. ' \
-                'Create a SID with "servald keyring add" and restart Serval. Aborting.'
-              )
-        return
+    # Create a RESTful serval_client to Serval with the parameters from the config file
+    # and get the Rhizome serval_client.
+    SERVAL = Client(
+            host=CONFIGURATION['host'],
+            port=int(CONFIGURATION['port']),
+            user=CONFIGURATION['user'],
+            passwd=CONFIGURATION['passwd']
+        )
+    rhizome = SERVAL.rhizome
 
     # At this point we can publish all offered procedures.
-    server_publish_procedures(rhiz, my_sid.sid)
+    # This procedure is executed every 30 seconds.
+    update_published_thread = threading.Timer(10, server_publish_procedures)
+    update_published_thread.daemon = True
+    update_published_thread.start()
 
-    pdebug('Server address: %s' % my_sid.sid)
+    time.sleep(60)
 
     # Immediatelly after publishing the offered procedures,
     # get the token from the store, to not parse the entire bundlelist.
-    token = rhiz.get_bundlelist()[0].__dict__['.token']
+    token = rhizome.get_bundlelist()[0].bundle_id
     while SERVER_MODE:
-        VAR = utilities.serval_running()
-        bundles = rhiz.get_bundlelist(token=token)
+        bundles = rhizome.get_bundlelist()
+        if not bundles:
+            continue
         for bundle in bundles:
-            potential_call = rhiz.get_manifest(bundle.id)
-        if bundles:
-            for bundle in bundles:
-                # The first bundle is the most recent. Therefore, we have to save the new token.
-                token = bundle.__dict__['.token'] if bundle.__dict__['.token'] else token
+            if not bundle.manifest.service == 'RPC':
+                continue
 
-                if not bundle.service == 'RPC':
-                    continue
+            # At this point, we have an call and have to start handling it.
+            # Therefore, we download the manifest.
+            potential_call = bundle.manifst
+            if not(potential_call.recipient == 'any' \
+                or potential_call.recipient == SERVAL.keyring.default_identity().sid):
+                continue
 
-                # At this point, we have an call and have to start handling it.
-                # Therefore, we download the manifest.
-                potential_call = rhiz.get_manifest(bundle.id)
-                if not(potential_call.recipient == 'any' \
-                    or potential_call.recipient == 'all' \
-                    or potential_call.recipient == 'broadcast' \
-                    or potential_call.recipient == my_sid.sid):
-                    continue
+            # If the bundle is a call, we start a handler thread.
+            if potential_call.type == CALL:
+                start_new_thread(server_thread_handle_call, (potential_call, delete))
 
-                # If the bundle is a call, we start a handler thread.
-                if potential_call.type == CALL:
-                    start_new_thread(server_thread_handle_call, (potential_call, rhiz, my_sid, delete))
-                # If the bundle is a cleanup file, we start the cleanup routine.
-                # TODO Cleanup doesnt work with cc
-                elif potential_call.type == CLEANUP:
-                    pdebug("CLEANUP")
-                    #server_cleanup_store(potential_call, my_sid.sid, rhiz)
+            # If the bundle is a cleanup file, we start the cleanup routine.
+            # TODO Cleanup doesnt work with cc
+            elif potential_call.type == CLEANUP:
+                pdebug("CLEANUP")
+                #server_cleanup_store(potential_call, SERVAL.keyring.default_identity().sid)
 
         time.sleep(1)

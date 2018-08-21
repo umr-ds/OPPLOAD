@@ -3,7 +3,7 @@
 
 This module filters servers by their capabilities.
 '''
-import restful
+from pyserval.client import Client
 import utilities
 from utilities import pfatal, pinfo
 import sys
@@ -12,10 +12,10 @@ import copy
 parsed_arguments = {}
 my_sid = ""
 
-def client_find_server(rhiz, args, procedure = None):
+def client_find_server(rhizome, args, procedure = None):
     '''Searches for all servers, which have to pass different filters.
     Args:
-        rhiz (Rhizome):     Rhizome connection to Serval
+        rhizome (Rhizome):     Rhizome connection to Serval
         args (list(str)):   All filter arguments in a list.
 
     Returns:
@@ -31,21 +31,21 @@ def client_find_server(rhiz, args, procedure = None):
         parsed_arguments=args
     server_offer = {}
     # If there are no bundles, the are no servers offering anything. Abort.
-    bundles = rhiz.get_bundlelist()
+    bundles = rhizome.get_bundlelist()
     if not bundles:
         return None
     server_list = {}
     for bundle in bundles:
         name = str(bundle).split(':')[1]
-        if not (bundle.service == 'file' or name  == (str(my_sid) + ".info") or (bundle.service == 'RPC_OFFER' and procedure is not None)): #file
+        if not (bundle.service == 'file' or name  == (str(my_sid) + ".info") or (bundle.service == utilities.OFFER and procedure is not None)): #file
             continue
         server_id = (name.split('.')[0])
-        offers = rhiz.get_decrypted(bundle.id).split('\n')
+        offers = rhizome.get_payload(bundle.id).split('\n')
         for offer in offers:
             if offer == '':
                continue
             # check if its an offer or an info file
-            if procedure is not None and bundle.service == 'RPC_OFFER':
+            if procedure is not None and bundle.service == utilities.OFFER:
                 offered_procedure = offer.split(' ')
                 if not server_id in server_offer:
                     server_offer[server_id] = set()
@@ -71,21 +71,21 @@ def client_filter(args):
     Args:
         args (list of strings): Filter arguments.
     '''
-    # Create a RESTful connection to Serval with the parameters from the config file
-    # and get the Rhizome connection.
-    connection = restful.RestfulConnection(
-        host=utilities.CONFIGURATION['host'],
-        port=int(utilities.CONFIGURATION['port']),
-        user=utilities.CONFIGURATION['user'],
-        passwd=utilities.CONFIGURATION['passwd']
-    )
-    rhiz = connection.rhizome
+    # Create a RESTful serval_client to Serval with the parameters from the config file
+    # and get the Rhizome serval_client.
+    serval_client = Client(
+            host=CONFIGURATION['host'],
+            port=int(CONFIGURATION['port']),
+            user=CONFIGURATION['user'],
+            passwd=CONFIGURATION['passwd']
+        )
+    rhizome = serval_client.rhizome
 
     # Get the first SID found in Keyring.
     # Recent versions of Serval do not have a SID by default, which has to be
     # handled. Therefore, check if we could get a SID.
     global my_sid
-    my_sid = connection.first_identity
+    my_sid = serval_client.first_identity
     if not my_sid:
         pfatal(
             'The server does not have a SID. Create a SID with' \
@@ -95,7 +95,7 @@ def client_filter(args):
 
     args = set(args)
     # Find all servers which passes at least one filter
-    server_list = client_find_server(rhiz, args)
+    server_list = client_find_server(rhizome, args)
     parse_server_caps(server_list, args)
 
 def parse_server_caps(server_list, args):

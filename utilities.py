@@ -1,10 +1,10 @@
 '''Contains helper functions and variables.
 '''
 import os
+import sys
 import string
 import requests
-import restful
-import rhizome
+from pyserval.client import Client
 import zipfile
 import errno
 import job
@@ -44,6 +44,8 @@ RESULT = '2'
 ERROR = '3'
 CLEANUP = '4'
 
+OFFER = 'RPC_OFFER'
+
 # Hold the configuration read from config file.
 CONFIGURATION = {}
 
@@ -56,12 +58,30 @@ def config_files_present():
     '''
     if not os.path.exists(CONFIGURATION['bins']):
         pfatal('RPC binary path does not exist. Aborting.')
-        print(CONFIGURATION['bins'])
         return False
     if not os.path.exists(CONFIGURATION['rpcs']):
         pfatal('RPC definition file does not exists. Aborting.')
         return False
     return True
+
+def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
+    ''' Checks, if all files are present and if Serval is running
+
+    Args:
+        config_path (str):    Path of the main RPC config file to be checked.
+        server_checks (bool): If server checks should be done or not (default False).
+        client_jobfle (str):  The client job file. If None, it will not be checked.
+    '''
+
+    if not read_config(config_path):
+        sys.exit(1)
+    #if not serval_running():
+    #    sys.exit(1)
+    if server_checks and not config_files_present():
+        sys.exit(1)
+    if client_jobfle and not os.path.exists(client_jobfle):
+        pfatal("Jobfile %s not present! Please check arguments!" % client_jobfle)
+        sys.exit(1)
 
 def read_config(path):
     '''Reads the configuration file, parses it and stores the values in the CONFIGURATION dict.
@@ -87,8 +107,8 @@ def make_bundle(manifest_props, rpc_service=True):
     Returns:
         bundle: The compiled bundle.
     '''
-    #bundle = rhizome.Bundle(None, None)
-    bundle = rhizome.Bundle()
+    bundle = {}
+    
     for prop in manifest_props:
         bundle.__dict__[prop[0]] = prop[1]
 
@@ -155,12 +175,13 @@ def split_join(line, appendix):
     return ret_line
 
 def serval_running():
+    # TODO: needs revision!
     '''Check is Serval is running.
     Returns:
         bool: True, if Serval is running, false otherwise.
     '''
     try:
-        restful.RestfulConnection(
+        Client(
             host=CONFIGURATION['host'],
             port=int(CONFIGURATION['port']),
             user=CONFIGURATION['user'],
@@ -297,30 +318,3 @@ def parse_jobfile(jobfile):
     else:
         pfatal('Error: '+  jobfile + ' does not exists. Aborting')
         return False
-
-def simple_json_parse(json_list):
-    '''Simple function for parsing parentheses in json
-    Args:
-        json_list (list): the list to check.
-    Returns:
-        int: amount of parentheses which are missing at the end.
-    '''
-    parentheses_counter = 0
-    brackets_counter = 0
-    for element in json_list:
-        for char in element:
-            char = chr(char)
-            if char == '{':
-                parentheses_counter += 1
-            elif char == '}':
-                parentheses_counter -= 1
-            elif char == '[':
-                brackets_counter += 1
-            elif char == ']':
-                brackets_counter -= 1
-
-    if parentheses_counter != 0:
-        pfatal('PARENTHESES_ERROR')
-    if brackets_counter != 0:
-        pfatal('BRACKETS_ERROR')
-    return (parentheses_counter, brackets_counter)
