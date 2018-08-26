@@ -179,3 +179,11 @@ Again, the arguments should be self explaining. You can again decide either DTN 
 fast mode: crash after two cleanup actions after some jumps, due to an update manifest which doesnt belong to the server
 Cleanup works only once for each server-server/client combination. Dunno why, but assume a uniqueness problem
 
+## Docker
+You can use docker to run the example simple and fast:
+
+```
+docker run --rm --privileged -v <PATH/TO/DTN-RPyC>:/dtnrpc -v <PATH/TO/DTN-RPyC>/examples:/tmp/dtnrpc -v /lib/modules:/lib/modules -it --cap-add=NET_ADMIN -e DISPLAY=<YOURDISPLAYVAR>:0 umrds/serval_core_worker-gui
+```
+
+This will pull a docker container containing all dependencies and start a CORE GUI forwarded to your local X server. 

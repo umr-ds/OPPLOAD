@@ -67,7 +67,7 @@ class DTNRPyC(object):
             server.server_listen()
         elif args.job_file_path:
             utilities.pre_exec_checks(args.config_path, client_jobfle=args.job_file_path)
-            #client.client_call(args.job_file_path)
+            client.client_call(args.job_file_path)
 
 def signal_handler(_, __):
     ''' Just a simple CTRL-C handler.

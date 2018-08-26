@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+
+# -*- coding: utf-8 -*-
+
 '''Contains helper functions and variables.
 '''
 import os
@@ -38,11 +42,11 @@ def pwarn(string_to_print):
     print(WARN + str(string_to_print) + RESET)
 
 # Type definitions for DTN-RPC protocol header.
-CALL = '0'
-ACK = '1'
-RESULT = '2'
-ERROR = '3'
-CLEANUP = '4'
+CALL = 0
+ACK = 1
+RESULT = 2
+ERROR = 3
+CLEANUP = 4
 
 OFFER = 'RPC_OFFER'
 
@@ -99,44 +103,24 @@ def read_config(path):
         pfatal('DTN-RPyC configuration file %s was not found. Aborting.' % path)
         return False
 
-def make_bundle(manifest_props, rpc_service=True):
-    '''Compiles a bundle of a list of tuples.
-    Args:
-        manifest_pros (tuple-list): The list of tuples to make the bundle from.
-        rpc_service (bool):         An indicator if service=RPC should be part of the bundle.
-    Returns:
-        bundle: The compiled bundle.
-    '''
-    bundle = {}
-    
-    for prop in manifest_props:
-        bundle.__dict__[prop[0]] = prop[1]
-
-    if rpc_service:
-        default_props = [('service', 'RPC')]
-        for prop in default_props:
-            bundle.__dict__[prop[0]] = prop[1]
-
-    return bundle
-
 def extract_zip(path, bundle_id, my_sid):
     zipf = zipfile.ZipFile(path, 'r')
     member_list = zipf.namelist()
-    # prepare path
+
     if not os.path.exists('/tmp/' + bundle_id):
         try:
             os.makedirs('/tmp/' + bundle_id)
         except OSError as e:
             if e.errno != errno.EXIST:
                 raise
+
     npath = '/tmp/' + bundle_id + '/'
     zipf.extractall(npath +'/')
     zipf.close()
-    member_list = [npath + x for x in member_list]
-    return member_list
 
-def is_zipfile(file):
-    return zipfile.is_zipfile(file)
+    member_list = [npath + x for x in member_list]
+
+    return member_list
 
 def make_zip(arg_list, name='tmp_container'):
     ''' Creates a zip archive with all information a server needs to execute a job
@@ -144,35 +128,74 @@ def make_zip(arg_list, name='tmp_container'):
         arg_list (list of strings): The list of files to make a archive from.
         name (string): An optionally name for the zip archive.
     '''
-    # check if all files exist
-    current_time = str(math.floor(time.time()))
-    # adding a timestamp file for uniqueness
-    e = open('time.txt', 'w')
-    e.write(current_time)
-    e.close()
-    arg_list.append('time.txt')
-
-    for arg in arg_list:
-        if not os.path.isfile(arg):
-            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), arg)
-
     # writing the zipfile
-    zipf = zipfile.ZipFile(name+'.zip', 'w', zipfile.ZIP_DEFLATED)
-    pdebug('Creating zipfile from: %s' % arg_list)
-    for arg in arg_list:
-        zipf.write(arg, os.path.basename(arg))
-    zipf.close()
+    with zipfile.ZipFile(name + '.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for arg in arg_list:
+            zipf.write(arg)
     return name + '.zip'
 
-def split_join(line, appendix):
+def insert_to_line(line, appendix):
     line = line.split('|')
     line[0] = line[0].strip('\n')
     line[0] = line[0] + ' ' + appendix
+
     if len(line) == 1:
         line[0] = line[0] + '\n'
         return line[0]
+
     ret_line = line[0] + '|' + line[1]
     return ret_line
+
+def find_available_servers(rhizome, first_job):
+    # If there are no bundles, the are no servers offering anything. Abort.
+    bundles = rhizome.get_bundlelist()
+    if not bundles:
+        return None
+
+    server_list = []
+    for bundle in bundles:
+        if not bundle.manifest.service == OFFER:
+            continue
+
+        # We found an offer bundle. Therefore download the content...
+        offers = rhizome.get_payload(bundle).decode("utf-8").split('\n')
+        pdebug(offers)
+
+        # ... iterate over the lines and see if this is the procedure we searching for.
+        for offer in offers:
+            procedure = offer.split(' ')
+            if procedure[0] == '' or 'capabilities' in offer:
+                break
+            if procedure[1] == first_job.procedure and len(procedure[2:]) == len(first_job.arguments) and bundle.manifest.name:
+                if not first_job.filter_dict:
+                    server_list.append(bundle.manifest.name)
+                else:
+                    fullfills = True
+                    for requirement in first_job.filter_dict:
+                        capability_line = [line for line in offers if requirement in line]
+                        capability_line = capability_line[0].split('=')
+                        capability_type = capability_line[0]
+                        capability_value = capability_line[1].rstrip()
+                        unpacked_requirement_value = first_job.filter_dict[requirement][0]
+                        unpacked_requirement_op = first_job.filter_dict[requirement][1]
+                        if not eval("{} {} {}".format(capability_value, unpacked_requirement_op, unpacked_requirement_value)):
+                            fullfills = False
+                            break
+
+                    if fullfills:
+                        server_list.append(bundle.manifest.name)
+
+    return server_list
+
+def replace_any_to_sid(job_file_path, linecounter, sid):
+    with open(job_file_path, 'r+') as job_file:
+        lines = job_file.readlines()
+        lines[linecounter] = lines[linecounter].replace('any', sid)
+
+        job_file.seek(0)
+        for line in lines:
+            job_file.write(line)
+        job_file.close()
 
 def serval_running():
     # TODO: needs revision!
@@ -211,8 +234,6 @@ def is_server_address(sid):
         bool: If the SID is a SID or 64 hex chars or not.
     '''
     if sid == 'any' \
-        or sid == 'all' \
-        or sid == 'broadcast' \
         or (all(hex_char in string.hexdigits for hex_char in sid) and len(sid) == 64) \
         or (all(hex_char in string.hexdigits for sids in sid for hex_char in sids) and all(len(sids) == 64 for sids in sid)) \
         or (type(sid) is list and (char == 'any' or all(char in string.hexdigits) for sids in sid for char in sids)):
@@ -221,100 +242,133 @@ def is_server_address(sid):
     pfatal('%s is not a valid server address. Aborting.' % sid)
     return False
 
-# TODO check for global filters
-def parse_jobfile(jobfile):
+def parse_jobfile(job_file_path):
+    # This are the available capabilities.
     filter_keywords = ['cpu_cores', 'cpu_load', 'disk_space', 'power_state', 'power_percentage']
-    # parse the jobfile if its well formed
-    f = open(jobfile, 'r+')
-    if f is not None:
-        client_sid = None
-        #check each line
-        lines = f.readlines()
-        if lines[0].split('=')[0] == 'client_sid':
-            client_sid = lines[0].split('=')[1]
-            client_sid = client_sid.strip('\n')
-            pdebug("Client sid found: " + client_sid)
-            if not (all(hex_char in string.hexdigits for hex_char in client_sid) and len(client_sid) == 64):
-                # wrong sid
-                pdebug('No sid found')
-                client_sid = None
-        jbfile = job.Jobfile(client_sid)
-        counter = 1
-        for x in range(1,len(lines)):
-            # ignore comments
-            line = lines[x]
-            if line[0] == '#' or len(line) == 0 or line == '\n':
-                pdebug('found a comment or an empty line')
-                counter = counter + 1
-                continue
-            # check for global filters
-            if line[0] == '|':
-                gfilter = line.strip('\n')
-                gfilter = gfilter.split('|')
-                gfilter = gfilter[1].split(' ')
-                if '' in gfilter:
-                    gfilter = [arg for arg in gfilter if arg != '']
-                for filter_arg in gfilter:
-                    poss_fil = filter_arg.split('=')
-                    if poss_fil == '':
-                        continue
-                    elif poss_fil[0] in filter_keywords:
-                        jbfile.add_filter(poss_fil[0], poss_fil[1])
-                        pdebug('Adding global filter: %s=%s' % (poss_fil[0], poss_fil[1]))
-                counter = counter + 1
-                continue
-            # check if clients sid is present
-            status = 'OPEN'
-            line = line.strip('\n')
-            possible_filters = line.split('|')
-            line = possible_filters[0].split(' ')
-            if '' in line:
-                line = [arg for arg in line if arg != '']
-            possible_sid = line[0]
-            procedure_name = line[1]
-            procedure_args = line[2:]
-            if '' in procedure_args:
-                procedure_args = [arg for arg in procedure_args if arg != '']
-            if not is_server_address(possible_sid):
-                # parse the rest of the line
-                # skip the given process and arguments, but they have to be not None
-                pfatal('SID might be malformed: ' + possible_sid)
-                f.close()
-                return None
-            if 'DONE' in procedure_args:
-                status = 'DONE'
-            elif 'ERROR' in procedure_args:
-                status = 'ERROR'
-            #pdebug('Possible sid found. ' + possible_sid)
-            jbfile.add(possible_sid, procedure_name, procedure_args, status, counter)
-            counter += 1
-            # adding global filters if they exist
-            if bool(jbfile.filter):
-                for fil in jbfile.filter:
-                    jbfile.joblist[-1].filter_dict[fil] = jbfile.filter[fil]
-                    pdebug('Setting [%s:%s]' %  (fil , jbfile.filter[fil]))
 
-            # optional filters
-            if len(possible_filters) > 1:
-                # filters found
-                possible_filters = possible_filters[1].split(' ')
-                if '' in possible_filters:
-                    possible_filters = [arg for arg in possible_filters if arg != '']
-                #print('Possible filters: %s' %possible_filters)
-                for filter_arg in possible_filters:
-                    filter = filter_arg.split('=')
-                    #print('Filter: %s' % filter)
-                    if filter == '':
-                        continue
-                    elif filter[0] in filter_keywords:
-                        # adding filter to the dict
-                        pdebug('Setting filter: %s' % filter)
-                        jbfile.joblist[-1].filter_dict[filter[0]] = filter[1].strip('\n')
-                        continue
-                    else:
-                        pdebug("Filteroption: " + filter[0] + " not found. Disable filter function")
-        f.close()
-        return jbfile
-    else:
-        pfatal('Error: '+  jobfile + ' does not exists. Aborting')
-        return False
+    # parse the jobfile if its well formed
+    job_file = open(job_file_path, 'r+')
+
+    client_sid = None
+
+    #check each line
+    lines = job_file.readlines()
+
+    # First, we see, if the client SID is on the first line. If not, we stop the
+    # execution here.
+    split_first_line = lines[0].split('=')
+    try:
+        if split_first_line[0] == 'client_sid':
+            client_sid = split_first_line[1].strip('\n')
+            if not (all(hex_char in string.hexdigits for hex_char in client_sid) and len(client_sid) == 64):
+                # This is a SID sanity check... If it fails, we prepend the default SID.
+                pfatal("Looks like the provided client SID in the job file is not a real SID.")
+                job_file.close()
+                return None
+    except IndexError:
+        pfatal("Could not find a client SID in the first line of the job file.")
+        job_file.close()
+        return None
+
+    # Create an empty jobs object. This will be filled in further execution.
+    jobs = job.Jobfile(client_sid)
+
+    counter = 1
+    for line in lines[1:]:
+        # The first thing to check for comments. Comments in job files start
+        # with a '#'. Only line comments are allowed.
+        # At this point also empty lines are skipped.
+        if line[0] == '#' or len(line) == 0 or line == '\n':
+            counter = counter + 1
+            continue
+
+        # We have the ability to specify global filters for capabilites, which
+        # will be applied to all jobs. They can be defined anywhere in the file
+        # and start with a '|'.
+        if line[0] == '|':
+            global_filter = line[1:].strip('\n')
+            global_filter = global_filter.split(' ')
+
+            # Not sure why this is if needed...
+            if '' in global_filter:
+                global_filter = [cap_filter for cap_filter in global_filter if cap_filter != '']
+
+            # Split the filter at '=' and store the type and the corresponding filter value.
+            for cap_filter in global_filter:
+                filter_type = cap_filter.split(':')
+
+                # Just a very basic sanity check.
+                if filter_type == '':
+                    continue
+                elif filter_type[0] in filter_keywords:
+                    jobs.add_filter(filter_type[0], (filter_type[1], filter_type[2]))
+
+            counter = counter + 1
+            # At this point we can ignore the remaining part of the line since
+            # it is not allowed to do other stuff in the global filter line.
+            continue
+
+        # Here the job parsing starts. At the begining, we assume that all jobs
+        # jobs are open.
+        status = 'OPEN'
+        line = line.strip('\n')
+        # We also can have filters per step, which will override global filters
+        # for this particular step. We keep them for later.
+        possible_filters = line.split('|')
+
+        # Take the first part of the line (before the '|') and parse it.
+        job_parts = possible_filters[0].split(' ')
+        if '' in job_parts:
+            job_parts = [arg for arg in job_parts if arg != '']
+
+        # We assume a fixed syntax: server_sid, procedure name and finally all
+        # arguments.
+        possible_sid = job_parts[0]
+        procedure_name = job_parts[1]
+        procedure_args = job_parts[2:]
+        if '' in procedure_args:
+            procedure_args = [arg for arg in procedure_args if arg != '']
+
+        # At this point we have to make some sanity check of the server SID.
+        if not is_server_address(possible_sid):
+            pfatal('SID {} might be malformed.'.format(possible_sid))
+            job_file.close()
+            return None
+
+        # A job can have three states: OPEN, DONE or ERROR. We have to remember
+        # the state for every job.
+        if 'DONE' in procedure_args:
+            status = 'DONE'
+        elif 'ERROR' in procedure_args:
+            status = 'ERROR'
+
+        # Done. Now let's create a job.
+        jobs.add(possible_sid, procedure_name, procedure_args, status, counter)
+        counter += 1
+
+        # Now let's handle filter. First global filters.
+        if bool(jobs.filter):
+            for fil in jobs.filter:
+                jobs.joblist[-1].filter_dict[fil] = jobs.filter[fil]
+
+        # Finally, add local filters, if available.
+        if len(possible_filters) > 1:
+            possible_filters = possible_filters[1].split(' ')
+            if '' in possible_filters:
+                possible_filters = [arg for arg in possible_filters if arg != '']
+
+            for filter_arg in possible_filters:
+                fil = filter_arg.split(':')
+
+                # Again, simple sanity check.
+                if fil == '':
+                    continue
+
+                elif fil[0] in filter_keywords:
+                    jobs.joblist[-1].filter_dict[fil[0]] = (fil[1], fil[2].strip('\n'))
+                    continue
+                else:
+                    pwarn("Filter {} not found. Not applying this filter to job.".format(fil[0]))
+
+        job_file.close()
+        return jobs

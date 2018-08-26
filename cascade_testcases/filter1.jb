@@ -1,3 +1,0 @@
-any trace_servers | cpu_cores=2 disk_space=4G
-any trace_servers | cpu_cores=4
-any trace_servers | cpu_cores=8

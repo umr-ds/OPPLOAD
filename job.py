@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+
+# -*- coding: utf-8 -*-
+
 from enum import Enum
 
 class Jobfile:
@@ -7,13 +11,10 @@ class Jobfile:
     And a filter dictionary
     '''
 
-    def __init__(self, client_sid=None, filter=None):
+    def __init__(self, client_sid=None, filter={}):
         self.client_sid = client_sid
         self.joblist = []
-        if filter is None:
-            self.filter = {}
-        else:
-            self.filter = filter
+        self.filter = filter
 
     def add_filter(self, key, value):
         self.filter[key] = value
@@ -33,37 +34,24 @@ class Job:
     OPEN = '\033[1m\033[33m\033[0m\033[33m'   # Yellow
     ERROR = '\033[1m\033[31\033[0m\033[31m' # Red
 
-    def __init__(self, server, procedure, arguments, status, line, filter_dict=None):
+    def __init__(self, server, procedure, arguments, status, line, filter_dict={}):
         self.server = server
         self.procedure = procedure
         self.arguments = arguments
         self.line = line
+        self.filter_dict = filter_dict
         if status == 'OPEN':
             self.status = Status.OPEN
         elif status == 'DONE':
             self.status = Status.DONE
         else:
             status = Status.Error
-        if filter_dict is None:
-            self.filter_dict = {}
-        else:
-            self.filter_dict = filter_dict
 
     def get_filters(self):
         return self.filter_dict
 
     def add_filter(self, key, value):
         self.filter_dict[key] = value
-
-    def job_print(self):
-        print('Server: %s\nProcedure: %s\nArguments: %s' % (self.server, self.procedure, self.arguments))
-        if self.status == Status.DONE:
-            print('Status: ' + self.DONE + str(self.status) + self.RESET)
-        elif self.status == Status.OPEN:
-            print('Status: ' + self.OPEN + str(self.status) + self.RESET)
-        else:
-            print('Status: ' + self.ERROR + str(self.status) + self.RESET)
-        print('Line: %s\nFilter: %s\n' % (self.line, self.filter_dict))
 
 class Status(Enum):
     OPEN = 0
