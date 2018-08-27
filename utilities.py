@@ -145,7 +145,7 @@ def insert_to_line(line, appendix):
     ret_line = line[0] + '|' + line[1]
     return ret_line
 
-def find_available_servers(rhizome, first_job):
+def find_available_servers(rhizome, first_job, server_sid=None):
     # If there are no bundles, the are no servers offering anything. Abort.
     bundles = rhizome.get_bundlelist()
     if not bundles:
@@ -156,9 +156,11 @@ def find_available_servers(rhizome, first_job):
         if not bundle.manifest.service == OFFER:
             continue
 
+        if server_sid is not None and bundle.manifest.sender == server_sid:
+            continue
+
         # We found an offer bundle. Therefore download the content...
         offers = rhizome.get_payload(bundle).decode("utf-8").split('\n')
-        pdebug(offers)
 
         # ... iterate over the lines and see if this is the procedure we searching for.
         for offer in offers:
@@ -342,16 +344,9 @@ def parse_jobfile(job_file_path):
             status = 'ERROR'
 
         # Done. Now let's create a job.
-        jobs.add(possible_sid, procedure_name, procedure_args, status, counter)
-        counter += 1
-
-        # Now let's handle filter. First global filters.
-        if bool(jobs.filter):
-            for fil in jobs.filter:
-                jobs.joblist[-1].filter_dict[fil] = jobs.filter[fil]
-
         # Finally, add local filters, if available.
         if len(possible_filters) > 1:
+            filter_dict = {}
             possible_filters = possible_filters[1].split(' ')
             if '' in possible_filters:
                 possible_filters = [arg for arg in possible_filters if arg != '']
@@ -364,10 +359,16 @@ def parse_jobfile(job_file_path):
                     continue
 
                 elif fil[0] in filter_keywords:
-                    jobs.joblist[-1].filter_dict[fil[0]] = (fil[1], fil[2].strip('\n'))
+                    filter_dict[fil[0]] = (fil[1], fil[2].rstrip())
                     continue
                 else:
                     pwarn("Filter {} not found. Not applying this filter to job.".format(fil[0]))
 
-        job_file.close()
-        return jobs
+            jobs.add(possible_sid, procedure_name, procedure_args, status, counter, filter_dict)
+        else:
+            jobs.add(possible_sid, procedure_name, procedure_args, status, counter)
+
+        counter += 1
+
+    job_file.close()
+    return jobs

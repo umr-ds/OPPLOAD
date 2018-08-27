@@ -19,7 +19,7 @@ class Jobfile:
     def add_filter(self, key, value):
         self.filter[key] = value
 
-    def add(self, server, procedure, args, status, counter):
+    def add(self, server, procedure, args, status, counter, filter_dict={}):
         self.joblist.append(Job(server, procedure, args, status, counter))
 
     def list_print(self):

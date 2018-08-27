@@ -19,6 +19,7 @@ import client
 import logging
 from job import Status
 from job import ServerNotFoundError, MalformedJobfileError, ServerNotOfferingProcedure, ArgumentMissmatchError
+from pyserval.exceptions import DecryptionError
 import sys
 import shutil
 import math
@@ -36,6 +37,8 @@ SERVER_MODE = STOPPED
 
 # A dict where all bundles are stored which have to be cleaned up after execution.
 CLEANUP_BUNDLES = {}
+
+server_default_sid = None
 
 class Procedure(object):
     '''A simple procedure class.
@@ -93,7 +96,7 @@ def server_publish_procedures():
             procedures_bundle.update_payload(payload)
         else:
             procedures_bundle = SERVAL.rhizome.new_bundle(
-                name=SERVAL.keyring.default_identity().sid,
+                name=server_default_sid,
                 payload=payload,
                 service=utilities.OFFER
             )
@@ -148,9 +151,7 @@ def server_offering_procedure(procedure):
     '''
     with LOCK:
         opc, offered_procedures = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
-        pdebug("Will check for procedures.")
         for offered_procedure in offered_procedures:
-            pdebug("Offered Proc: {}".format(offered_procedure))
             if offered_procedure.name != procedure.name:
                 continue
 
@@ -243,7 +244,6 @@ def server_thread_handle_call(potential_call):
     procedure = server_parse_call(potential_call)
 
     if server_offering_procedure(procedure):
-        pdebug("Offering procedure.")
         client_sid = None
 
         # If the server offers the procedure,
@@ -251,18 +251,16 @@ def server_thread_handle_call(potential_call):
         # If in the next line might be obscolete, because only the text is sent to all servers not the file itself
         path = '/tmp/%s_%s' % (procedure.name, potential_call.manifest.version)
         with open(path, 'wb') as zip_file:
-            pdebug("Downloading the ZIP from Rhizome store.")
             zip_payload = SERVAL.rhizome.get_payload(potential_call)
             zip_file.write(zip_payload)
 
         jobs = None
         job_file_path = None
 
-        extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, SERVAL.keyring.default_identity().sid)
+        extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, server_default_sid)
 
         # If we have a valid ZIP file, we extract it and parse the job file.
         if zipfile.is_zipfile(path):
-            pdebug("Extracting ZIP.")
             file_list = utilities.extract_zip(path, extract_path)
 
             # Find the job file
@@ -289,9 +287,8 @@ def server_thread_handle_call(potential_call):
 
         # Now, we iterate through all jobs and try to find a job for us.
         # We remember our job and the job for the next hop, if possible.
-        pdebug("Iterating through all jobs.")
         for job in jobs.joblist:
-            if job.status == Status.OPEN and job.server == SERVAL.keyring.default_identity().sid:
+            if job.status == Status.OPEN and job.server == server_default_sid:
                 possible_job = job
                 try:
                     current_position = jobs.joblist.index(possible_job)
@@ -340,6 +337,9 @@ def server_thread_handle_call(potential_call):
                 # Something went wrong, we append ERROR to the line.
                 lines[possible_job.line] =  utilities.insert_to_line(lines[possible_job.line], 'ERROR')
 
+            lines[possible_next_job.line] = lines[possible_next_job.line].replace('##', result_decoded.replace(extract_path, ''))
+            pdebug(lines[possible_next_job.line])
+
             # So, the file has been updated, so we can write the content and close it.
             job_file.seek(0)
             for line in lines:
@@ -348,7 +348,7 @@ def server_thread_handle_call(potential_call):
 
             # If the next server is again any, we search a new one for the next job
             if possible_next_job.server == 'any':
-                servers = utilities.find_available_servers(SERVAL.rhizome, possible_next_job)
+                servers = utilities.find_available_servers(SERVAL.rhizome, possible_next_job, server_default_sid)
 
                 if not servers:
                     # TODO: Here we have to have some error handling!
@@ -359,7 +359,7 @@ def server_thread_handle_call(potential_call):
                 utilities.replace_any_to_sid(job_file_path, possible_next_job.line, possible_next_job.server)
 
             # Done. Now we only have to make the payload...
-            zip_name = SERVAL.keyring.default_identity().sid+ '_' + str(math.floor(time.time()))
+            zip_name = server_default_sid + '_' + str(math.floor(time.time()))
             payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
 
             payload = open(payload_path, 'rb')
@@ -374,12 +374,12 @@ def server_thread_handle_call(potential_call):
             )
 
         else:
-            zip_name = SERVAL.keyring.default_identity().sid + '_' + str(math.floor(time.time()))
+            zip_name = server_default_sid + '_' + str(math.floor(time.time()))
             payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
 
             payload = open(payload_path, 'rb')
 
-            custom_manifest={'recipient': jobs.client_sid, 'sender': SERVAL.keyring.default_identity().sid, 'type': None}
+            custom_manifest={'recipient': jobs.client_sid, 'sender': server_default_sid, 'type': None}
 
             # If code is 1, an error occured.
             if code == 1:
@@ -432,6 +432,7 @@ def server_listen(delete=False):
     '''
     global SERVER_MODE
     global SERVAL
+    global server_default_sid
     SERVER_MODE = RUNNING
 
     # Create a RESTful serval_client to Serval with the parameters from the config file
@@ -445,8 +446,6 @@ def server_listen(delete=False):
     rhizome = SERVAL.rhizome
     server_default_sid = SERVAL.keyring.default_identity().sid
 
-    pdebug('Everything cleaned up.')
-
     # At this point we can publish all offered procedures.
     # The publish function is executed once at startup and then every 30 seconds.
     server_publish_procedures()
@@ -455,7 +454,6 @@ def server_listen(delete=False):
     token = all_bundles[0].bundle_id
 
     # This is the main server loop.
-    pdebug("Entering the loop...")
     while SERVER_MODE:
         bundles = rhizome.get_bundlelist()
         for bundle in bundles:
@@ -467,19 +465,22 @@ def server_listen(delete=False):
 
             # At this point, we have an call and have to start handling it.
             # Therefore, we download the manifest.
-            potential_call = rhizome.get_bundle(bundle.bundle_id)
+            try:
+                potential_call = rhizome.get_bundle(bundle.bundle_id)
+            except DecryptionError:
+                continue
+
             if not potential_call.manifest.recipient == server_default_sid:
                 continue
 
             # If the bundle is a call, we start a handler thread.
             if potential_call.manifest.type == CALL:
-                pdebug("Found call. Starting thread.")
                 start_new_thread(server_thread_handle_call, (potential_call, ))
 
             # If the bundle is a cleanup file, we start the cleanup routine.
             # TODO Cleanup doesnt work with cc
             elif potential_call.manifest.type == CLEANUP:
-                pdebug("CLEANUP")
+                pass
                 #server_cleanup_store(potential_call, server_default_sid)
 
         token = bundles[0].bundle_id

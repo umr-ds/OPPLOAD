@@ -15,6 +15,7 @@ from pyserval.client import Client
 import utilities
 from utilities import pdebug, pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP, CONFIGURATION
 import threading
+from pyserval.exceptions import DecryptionError
 import sys
 from job import Status, Job, FileNotFound
 
@@ -30,7 +31,6 @@ def client_call(job_file_path):
 
     # Create a RESTful serval_client to Serval with the parameters from the config file
     # and get the Rhizome serval_client.
-    pdebug("Starting.")
     SERVAL = Client(
             host=CONFIGURATION['host'],
             port=int(CONFIGURATION['port']),
@@ -40,19 +40,17 @@ def client_call(job_file_path):
     rhizome = SERVAL.rhizome
     client_default_sid = SERVAL.keyring.default_identity().sid
 
-    pdebug("Everything initialized.")
-
     jobs = utilities.parse_jobfile(job_file_path)
     if not jobs:
         pfatal("Could not parse the job file!")
         return
 
     first_job = jobs.joblist[0]
-    pdebug("Job file successfully parsed. First job is {} to {}".format(first_job.procedure, first_job.server))
+
+    pdebug(first_job.line)
 
     # If the server address is 'any', we have to find a server, which offers this procedure.
     if first_job.server == 'any':
-        pdebug('Server is any, searching for servers.')
         servers = utilities.find_available_servers(rhizome, first_job)
 
         if not servers:
@@ -63,12 +61,9 @@ def client_call(job_file_path):
         first_job.server = servers[0]
         utilities.replace_any_to_sid(job_file_path, first_job.line, first_job.server)
 
-    pdebug("Done searching for servers, found {}".format(first_job.server))
-
     # set the payload to file
     zip_list = []
 
-    pdebug("Creating ZIP file.")
     for arg in first_job.arguments:
         if not os.path.isfile(first_job.arguments[0]):
             continue
@@ -77,8 +72,6 @@ def client_call(job_file_path):
     zip_list.append(job_file_path)
     zip_list = list(map(str.strip, zip_list))
     zip_file = utilities.make_zip(zip_list, client_default_sid + '_' + str(math.floor(time.time())))
-
-    pdebug("Done creating ZIP file. Trying to send file.")
 
     payload = open(zip_file, 'rb')
 
@@ -113,15 +106,17 @@ def client_call(job_file_path):
 
             # Before further checks, we have to download the manifest
             # to have all metadata available.
-            potential_result = rhizome.get_bundle(bundle.bundle_id)
+            try:
+                potential_result = rhizome.get_bundle(bundle.bundle_id)
+            except DecryptionError:
+                continue
 
-            if not (potential_result.manifest.name == first_job.procedure \
-                    and potential_result.manifest.recipient == client_default_sid):
+            if not potential_result.manifest.name == first_job.procedure:
+                pdebug("Not the right procedure: {}:{}".format(potential_result.manifest.name, first_job.procedure))
                 continue
 
             # At this point, we know that there is a RPC file in the store
             # and it is for us. Start parsing.
-            pdebug(potential_result.manifest)
             if potential_result.manifest.type == ACK:
                 pinfo('Received ACK. Will wait for result.')
 
