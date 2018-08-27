@@ -258,10 +258,12 @@ def server_thread_handle_call(potential_call):
         jobs = None
         job_file_path = None
 
+        extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, SERVAL.keyring.default_identity().sid)
+
         # If we have a valid ZIP file, we extract it and parse the job file.
         if zipfile.is_zipfile(path):
             pdebug("Extracting ZIP.")
-            file_list = utilities.extract_zip(path, potential_call.bundle_id, SERVAL.keyring.default_identity().sid)
+            file_list = utilities.extract_zip(path, extract_path)
 
             # Find the job file
             for _file in file_list:
@@ -280,8 +282,7 @@ def server_thread_handle_call(potential_call):
 
         # Further execution will happen on /tmp, so we remember the CWD for later.
         cwd  = os.getcwd()
-        new_path = '/tmp/' + potential_call.bundle_id + '/'
-        os.chdir(new_path)
+        os.chdir(extract_path)
 
         possible_job = None
         possible_next_job = None
@@ -322,7 +323,7 @@ def server_thread_handle_call(potential_call):
         pinfo('Ack is sent. Will execute procedure.')
 
         # After sending the ACK, start the execution.
-        code, result = server_execute_procedure(procedure_to_execute, new_path)
+        code, result = server_execute_procedure(procedure_to_execute, extract_path)
         result_decoded = result.decode('utf-8')
 
         # Here we need to prepare the job for the next hop.
@@ -358,7 +359,8 @@ def server_thread_handle_call(potential_call):
                 utilities.replace_any_to_sid(job_file_path, possible_next_job.line, possible_next_job.server)
 
             # Done. Now we only have to make the payload...
-            payload_path = utilities.make_zip([result_decoded, job_file_path], name=SERVAL.keyring.default_identity().sid+ '_' + str(math.floor(time.time())))
+            zip_name = SERVAL.keyring.default_identity().sid+ '_' + str(math.floor(time.time()))
+            payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
 
             payload = open(payload_path, 'rb')
 
@@ -372,7 +374,8 @@ def server_thread_handle_call(potential_call):
             )
 
         else:
-            payload_path = utilities.make_zip([result_decoded, job_file_path], name=SERVAL.keyring.default_identity().sid + '_' + str(math.floor(time.time())))
+            zip_name = SERVAL.keyring.default_identity().sid + '_' + str(math.floor(time.time()))
+            payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
 
             payload = open(payload_path, 'rb')
 

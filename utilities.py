@@ -103,26 +103,25 @@ def read_config(path):
         pfatal('DTN-RPyC configuration file %s was not found. Aborting.' % path)
         return False
 
-def extract_zip(path, bundle_id, my_sid):
+def extract_zip(path, extract_path):
     zipf = zipfile.ZipFile(path, 'r')
     member_list = zipf.namelist()
 
-    if not os.path.exists('/tmp/' + bundle_id):
+    if not os.path.exists(extract_path):
         try:
-            os.makedirs('/tmp/' + bundle_id)
+            os.makedirs(extract_path)
         except OSError as e:
             if e.errno != errno.EXIST:
                 raise
 
-    npath = '/tmp/' + bundle_id + '/'
-    zipf.extractall(npath +'/')
+    zipf.extractall(extract_path)
     zipf.close()
 
-    member_list = [npath + x for x in member_list]
+    member_list = [extract_path + x for x in member_list]
 
     return member_list
 
-def make_zip(arg_list, name='tmp_container'):
+def make_zip(arg_list, name='tmp_container', subpath_to_remove=""):
     ''' Creates a zip archive with all information a server needs to execute a job
     Args:
         arg_list (list of strings): The list of files to make a archive from.
@@ -131,7 +130,7 @@ def make_zip(arg_list, name='tmp_container'):
     # writing the zipfile
     with zipfile.ZipFile(name + '.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
         for arg in arg_list:
-            zipf.write(arg)
+            zipf.write(arg, arg.replace(subpath_to_remove, ""))
     return name + '.zip'
 
 def insert_to_line(line, appendix):
