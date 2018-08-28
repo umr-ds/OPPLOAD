@@ -223,6 +223,29 @@ def server_execute_procedure(procedure, env_path):
         return (0, out.rstrip())
 
 
+def is_capable(job):
+    if not job.filter_dict:
+        return True
+
+    cc, capabilities = get_capabilities(utilities.CONFIGURATION['capabilites'])
+
+    for requirement in job.filter_dict:
+        capability_line = [
+            line for line in capabilities if requirement in line
+        ]
+        capability_line = capability_line[0].split('=')
+        capability_type = capability_line[0]
+        capability_value = capability_line[1].rstrip()
+        unpacked_requirement_value = job.filter_dict[requirement][0]
+        unpacked_requirement_op = job.filter_dict[requirement][1]
+        if not eval("{} {} {}".format(
+                capability_value, unpacked_requirement_op,
+                unpacked_requirement_value)):
+            return False
+
+    return True
+
+
 def server_handle_call(potential_call):
     '''Main handler function for an incoming call.
     Args:
@@ -291,6 +314,11 @@ def server_handle_call(potential_call):
     # Let's do a final check, if the procedure is offered.
     if procedure_to_execute is None or not server_offering_procedure(procedure_to_execute):
         pfatal("Server is not offering this procedure.")
+        # TODO Error handling!
+        return
+
+    if not is_capable(possible_job):
+        pfatal("Server is not capable to execute the job.")
         # TODO Error handling!
         return
 
@@ -373,7 +401,7 @@ def server_handle_call(potential_call):
 
         payload = open(payload_path, 'rb')
 
-        custom_manifest={'recipient': jobs.client_sid, 'sender': server_default_sid, 'type': None}
+        custom_manifest = {'recipient': jobs.client_sid, 'sender': server_default_sid, 'type': None}
 
         # If code is 1, an error occured.
         if code == 1:
@@ -472,8 +500,7 @@ def server_listen(queue):
                     start_new_thread(server_handle_call, (potential_call, ))
 
             # If the bundle is a cleanup file, we start the cleanup routine.
-            # TODO Cleanup doesnt work with cc
-            elif potential_call.manifest.type == CLEANUP: # and potential_call.bundle_id in CLEANUP_BUNDLES:
+            elif potential_call.manifest.type == CLEANUP:
                 server_cleanup_store(potential_call)
 
         token = bundles[0].bundle_id
