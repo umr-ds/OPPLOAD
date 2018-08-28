@@ -8,16 +8,18 @@ the call functions.
 '''
 
 import os
-import random
 import time
 import math
-from pyserval.client import Client
-import utilities
-from utilities import pdebug, pfatal, pinfo, CALL, ACK, RESULT, ERROR, CLEANUP, CONFIGURATION
-import threading
-from pyserval.exceptions import DecryptionError
 import sys
-from job import Status, Job, FileNotFound
+
+from pyserval.exceptions import DecryptionError
+from pyserval.client import Client
+
+import utilities
+from utilities import pdebug, pfatal, pinfo
+from utilities import CALL, ACK, RESULT, ERROR, CLEANUP
+from utilities import CONFIGURATION
+from job import Job
 
 def client_call(job_file_path):
     # Create a RESTful serval_client to Serval with the parameters from the config file

@@ -10,18 +10,16 @@ import os
 import threading
 import zipfile
 from _thread import start_new_thread
+import client
+import math
+
 from pyserval.client import Client
-from pyserval.exceptions import DuplicateBundleException
+from pyserval.exceptions import DuplicateBundleException, DecryptionError
+
 import utilities
 from utilities import pdebug, pinfo, pfatal, pwarn
 from utilities import ACK, CALL, CLEANUP, ERROR, RESULT, CONFIGURATION
-import client
-import logging
 from job import Status, Job
-from pyserval.exceptions import DecryptionError
-import sys
-import shutil
-import math
 
 # This is the global serval RESTful client object
 SERVAL = None

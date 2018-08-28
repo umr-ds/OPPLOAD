@@ -7,13 +7,15 @@
 import os
 import sys
 import string
-import requests
-from pyserval.client import Client
 import zipfile
 import errno
+
+import requests
+from pyserval.client import Client
+
 import job
-import math
-import time
+
+
 # ANSI color codes.
 RESET = '\033[0m'
 FATAL = '\033[1m\033[31mFATAL: \033[0m\033[31m' # Red
