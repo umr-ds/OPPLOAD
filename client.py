@@ -135,6 +135,7 @@ def client_call(job_file_path):
                 # the call bundle will be updated with an empty file.
                 # This type will instruct the server to clean up
                 # the files involved during this RPC.
+                call_bundle.refresh()
                 call_bundle.manifest.type = CLEANUP
                 call_bundle.payload = ""
                 call_bundle.update()
