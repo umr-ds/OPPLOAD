@@ -124,7 +124,7 @@ def client_call(job_file_path):
                 # If it is a file, download it and return the path to the
                 # downloaded file.
                 # Otherwise, just return the result.
-                path = '/tmp/{}_{}_result.zip' % (potential_result.manifest.name, call_bundle.manifest.version)
+                path = '/tmp/{}_{}_result.zip'.format(potential_result.manifest.name, call_bundle.manifest.version)
                 with open(path, 'wb') as zip_file:
                     zip_file.write(potential_result.payload)
 

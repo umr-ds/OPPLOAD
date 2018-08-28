@@ -237,7 +237,7 @@ def server_thread_handle_call(potential_call):
     # If the server offers the procedure,
     # we first have to download the file because it will be removed as soon we send the ack.
     # If in the next line might be obscolete, because only the text is sent to all servers not the file itself
-    path = '/tmp/{}_{}_{}_call.zip' % (potential_call.manifest.name, potential_call.manifest.sender, potential_call.manifest.version)
+    path = '/tmp/{}_{}_{}_call.zip'.format(potential_call.manifest.name, potential_call.manifest.sender, potential_call.manifest.version)
     with open(path, 'wb') as zip_file:
         zip_file.write(potential_call.payload)
 
