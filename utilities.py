@@ -164,10 +164,12 @@ def find_available_servers(rhizome, first_job, server_sid=None):
 
         # ... iterate over the lines and see if this is the procedure we searching for.
         for offer in offers:
-            procedure = offer.split(' ')
-            if procedure[0] == '' or 'capabilities' in offer:
+            offered_job = offer.split(' ')
+            if offered_job[0] == '' or 'capabilities' in offer:
                 break
-            if procedure[1] == first_job.procedure and len(procedure[2:]) == len(first_job.arguments) and bundle.manifest.name:
+            if offered_job[0] == first_job.procedure and len(
+                    offered_job[1:]) == len(
+                        first_job.arguments) and bundle.manifest.name:
                 if not first_job.filter_dict:
                     server_list.append(bundle.manifest.name)
                 else:

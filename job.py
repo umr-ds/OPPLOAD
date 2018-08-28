@@ -29,12 +29,13 @@ class Job:
     '''
     Jobs which have to be executed
     '''
-    RESET = '\033[0m'
-    DONE = '\033[1m\033[32m\033[0m\033[32m'   # Green
-    OPEN = '\033[1m\033[33m\033[0m\033[33m'   # Yellow
-    ERROR = '\033[1m\033[31\033[0m\033[31m' # Red
-
-    def __init__(self, server, procedure, arguments, status, line, filter_dict={}):
+    def __init__(self,
+                 server=None,
+                 procedure=None,
+                 arguments=None,
+                 status=None,
+                 line=None,
+                 filter_dict={}):
         self.server = server
         self.procedure = procedure
         self.arguments = arguments
@@ -45,13 +46,17 @@ class Job:
         elif status == 'DONE':
             self.status = Status.DONE
         else:
-            status = Status.Error
+            status = Status.ERROR
 
     def get_filters(self):
         return self.filter_dict
 
     def add_filter(self, key, value):
         self.filter_dict[key] = value
+
+    def __str__(self):
+        return '%s %s' % (self.procedure, ' '.join(self.arguments))
+
 
 class Status(Enum):
     OPEN = 0

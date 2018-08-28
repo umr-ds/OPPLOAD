@@ -17,7 +17,7 @@ from utilities import pdebug, pinfo, pfatal, pwarn
 from utilities import ACK, CALL, CLEANUP, ERROR, RESULT, CONFIGURATION
 import client
 import logging
-from job import Status
+from job import Status, Job
 from job import ServerNotFoundError, MalformedJobfileError, ServerNotOfferingProcedure, ArgumentMissmatchError
 from pyserval.exceptions import DecryptionError
 import sys
@@ -39,24 +39,6 @@ SERVER_MODE = STOPPED
 CLEANUP_BUNDLES = {}
 
 server_default_sid = None
-
-class Procedure(object):
-    '''A simple procedure class.
-    Args:
-        return_type (str):  The return type for a procedure
-        name (str):         The name for the procedure
-        args (list(str)):   All arguments for the procedure
-    '''
-    def __init__(self, return_type=None, name=None, args=None):
-        self.return_type = return_type
-        self.name = name
-        self.args = args
-
-        # We need to remove the \n at the last argument.
-        self.args[-1] = args[-1].rstrip()
-
-    def __str__(self):
-        return '%s %s %s' % (self.return_type, self.name, ' '.join(self.args))
 
 def server_publish_procedures():
     '''Publishes all offered procedures.
@@ -82,7 +64,7 @@ def server_publish_procedures():
         # Build the payload containing all offered procedures
         payload = 'procedures: {}\n'.format(opc)
         for procedure in offered_procedures:
-            procedure_str = str(procedure) + '\n'
+            procedure_str = str(procedure)
             payload = payload + procedure_str
 
         payload = payload + 'capabilities: {}\n'.format(cc)
@@ -115,10 +97,9 @@ def get_offered_procedures(rpc_defs):
     with open(rpc_defs, 'r') as conf_file:
         for procedure_definition in conf_file:
             procedure_definition_list = procedure_definition.split(' ')
-            return_type = procedure_definition_list[0]
-            name = procedure_definition_list[1]
-            args = procedure_definition_list[2:]
-            offered_procedures.add(Procedure(return_type=return_type, name=name, args=args))
+            name = procedure_definition_list[0]
+            args = procedure_definition_list[1:]
+            offered_procedures.add(Job(procedure=name, arguments=args))
             count = count + 1
 
     return (count, offered_procedures)
@@ -141,7 +122,7 @@ def get_capabilities(rpc_caps):
 
     return (count, capabilities)
 
-def server_offering_procedure(procedure):
+def server_offering_procedure(job):
     '''Checks, if the given procedure is offered by the server.
     Args:
         procedure (Procedure): The procedure to check.
@@ -150,33 +131,31 @@ def server_offering_procedure(procedure):
         bool: True, if the procedure is offered, false otherwise.
     '''
     with LOCK:
-        opc, offered_procedures = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
-        for offered_procedure in offered_procedures:
-            if offered_procedure.name != procedure.name:
+        opc, offered_jobs = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
+        for offered_job in offered_jobs:
+            if offered_job.procedure != job.procedure:
                 continue
 
-            if len(offered_procedure.args) != len(procedure.args):
+            if len(offered_job.arguments) != len(job.arguments):
                 continue
 
-            procedure.return_type = offered_procedure.return_type
-            bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
-
-            bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'], procedure.name)
+            bin_path = '%s/%s' % (utilities.CONFIGURATION['bins'],
+                                  job.procedure)
 
             if not os.path.exists(bin_path) or not os.access(bin_path, os.X_OK):
                 pwarn('Server is offering procedure \'%s\', ' \
                         'but it seems the binary %s/%s is not present ' \
                         'or it is not executable. ' \
                         'Will not try to execute.' \
-                        % (procedure.name, utilities.CONFIGURATION['bins'], procedure.name)
+                        % (job.procedure, utilities.CONFIGURATION['bins'], job.procedure)
                     )
                 continue
-            pinfo('Offering procedure \'%s\'.' % procedure.name)
+            pinfo('Offering procedure \'%s\'.' % job.procedure)
             return True
 
         return False
 
-def server_execute_procedure(procedure, env_path):
+def server_execute_procedure(job, env_path):
     '''Main execution function.
     Args:
         procedure (Procedure): The procedure to be executed.
@@ -184,42 +163,45 @@ def server_execute_procedure(procedure, env_path):
     Returns:
         (int, str): Returns a tuple containing (return code, stdout)
     '''
-    pinfo('Starting execution of \'%s\'.' % procedure.name)
+    pinfo('Starting execution of \'%s\'.' % job.procedure)
     bin_path = utilities.CONFIGURATION['bins'] + '/%s %s'
 
-    _, offered_procedures = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
-    offered_procedure = [_procedure for _procedure in offered_procedures if _procedure.name == procedure.name and len(_procedure.args) == len(procedure.args)]
+    _, offered_jobs = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
+    offered_job = [
+        _job for _job in offered_jobs if _job.procedure == job.procedure
+        and len(_job.arguments) == len(job.arguments)
+    ]
 
     error = None
-    if len(offered_procedure) > 1:
+    if len(offered_job) > 1:
         error = 'There is more than one matching procedure! Can not execute.'
-    elif len(offered_procedure) < 1:
+    elif len(offered_job) < 1:
         error = 'There is no such procedure. Can not execute'
 
     if error:
         pwarn(error)
         return (1, error)
 
-    offered_procedure = offered_procedure[0]
+    offered_job = offered_job[0]
 
-    for i in range(len(procedure.args)):
-        if offered_procedure.args[i] == 'file':
-            procedure.args[i] = env_path + procedure.args[i]
+    for i in range(len(job.arguments)):
+        if offered_job.arguments[i] == 'file':
+            job.arguments[i] = env_path + job.arguments[i]
 
-    procedure_process = subprocess.Popen(
-        bin_path % (procedure.name, ' '.join(procedure.args)),
+    job_process = subprocess.Popen(
+        bin_path % (job.procedure, ' '.join(job.arguments)),
         shell=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-    out, err = procedure_process.communicate()
+        stderr=subprocess.PIPE)
+    out, err = job_process.communicate()
 
-    if procedure_process.returncode != 0:
+    if job_process.returncode != 0:
         pwarn('Execution of \'%s\' was not successfull. Will return error %s\n' \
-            % (procedure.name, err))
+            % (job.procedure, err))
         return (1, err.rstrip())
     else:
-        pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
+        pinfo('Execution of \'%s\' was successfull with result %s' %
+              (job.procedure, out))
         return (0, out.rstrip())
 
 
@@ -308,11 +290,8 @@ def server_handle_call(potential_call):
                 pass
             break
 
-    # Since we have our procedure, we create an object of it.
-    procedure_to_execute = Procedure(name=possible_job.procedure, args=possible_job.arguments)
-
     # Let's do a final check, if the procedure is offered.
-    if procedure_to_execute is None or not server_offering_procedure(procedure_to_execute):
+    if possible_job is None or not server_offering_procedure(possible_job):
         pfatal("Server is not offering this procedure.")
         # TODO Error handling!
         return
@@ -337,7 +316,7 @@ def server_handle_call(potential_call):
     pinfo('Ack is sent. Will execute procedure.')
 
     # After sending the ACK, start the execution.
-    code, result = server_execute_procedure(procedure_to_execute, extract_path)
+    code, result = server_execute_procedure(possible_job, extract_path)
     result_decoded = result.decode('utf-8')
 
     # Here we need to prepare the job for the next hop.
@@ -411,11 +390,10 @@ def server_handle_call(potential_call):
 
 
         result_bundle = SERVAL.rhizome.new_bundle(
-            name=procedure_to_execute.name,
+            name=possible_job.procedure,
             payload=payload.read(),
             service="RPC",
-            custom_manifest=custom_manifest
-        )
+            custom_manifest=custom_manifest)
 
         id_to_store = result_bundle.bundle_id
         if potential_call.bundle_id in CLEANUP_BUNDLES:
