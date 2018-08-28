@@ -30,19 +30,19 @@ SERVAL = None
 # A threading lock for critical parts like updating offered procedures.
 LOCK = threading.RLock()
 
-# Status indicators for the server
-RUNNING = True
-STOPPED = False
-SERVER_MODE = STOPPED
-
 # A dict where all bundles are stored which have to be cleaned up after execution.
 CLEANUP_BUNDLES = {}
 
-server_default_sid = None
+SERVER_DEFAULT_SID = None
 
 def server_publish_procedures():
     '''Publishes all offered procedures.
     '''
+
+    global SERVAL
+    global LOCK
+    global SERVER_DEFAULT_SID
+
     update_published_thread = threading.Timer(30, server_publish_procedures)
     update_published_thread.daemon = True
     update_published_thread.start()
@@ -78,10 +78,9 @@ def server_publish_procedures():
             procedures_bundle.update_payload(payload)
         else:
             SERVAL.rhizome.new_bundle(
-                name=server_default_sid,
+                name=SERVER_DEFAULT_SID,
                 payload=payload,
-                service=utilities.OFFER
-            )
+                service=utilities.OFFER)
 
 def get_offered_procedures(rpc_defs):
     '''Parses the rpc definitions file and stores all of them in a list.
@@ -130,6 +129,8 @@ def server_offering_procedure(job):
     Returns:
         bool: True, if the procedure is offered, false otherwise.
     '''
+    global LOCK
+
     with LOCK:
         opc, offered_jobs = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
         for offered_job in offered_jobs:
@@ -237,6 +238,8 @@ def server_handle_call(potential_call):
     pinfo('Received call. Will check if procedure is offered.')
 
     global CLEANUP_BUNDLES
+    global SERVAL
+    global SERVER_DEFAULT_SID
 
     client_sid = None
 
@@ -250,7 +253,7 @@ def server_handle_call(potential_call):
     jobs = None
     job_file_path = None
 
-    extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, server_default_sid)
+    extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, SERVER_DEFAULT_SID)
 
     # If we have a valid ZIP file, we extract it and parse the job file.
     if zipfile.is_zipfile(path):
@@ -281,7 +284,7 @@ def server_handle_call(potential_call):
     # Now, we iterate through all jobs and try to find a job for us.
     # We remember our job and the job for the next hop, if possible.
     for job in jobs.joblist:
-        if job.status == Status.OPEN and job.server == server_default_sid:
+        if job.status == Status.OPEN and job.server == SERVER_DEFAULT_SID:
             possible_job = job
             try:
                 current_position = jobs.joblist.index(possible_job)
@@ -343,7 +346,8 @@ def server_handle_call(potential_call):
 
         # If the next server is again any, we search a new one for the next job
         if possible_next_job.server == 'any':
-            servers = utilities.find_available_servers(SERVAL.rhizome, possible_next_job, server_default_sid)
+            servers = utilities.find_available_servers(
+                SERVAL.rhizome, possible_next_job, SERVER_DEFAULT_SID)
 
             if not servers:
                 # TODO: Here we have to have some error handling!
@@ -354,7 +358,7 @@ def server_handle_call(potential_call):
             utilities.replace_any_to_sid(job_file_path, possible_next_job.line, possible_next_job.server)
 
         # Done. Now we only have to make the payload...
-        zip_name = server_default_sid + '_' + str(math.floor(time.time()))
+        zip_name = SERVER_DEFAULT_SID + '_' + str(math.floor(time.time()))
         payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
 
         payload = open(payload_path, 'rb')
@@ -375,12 +379,16 @@ def server_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
     else:
-        zip_name = server_default_sid + '_' + str(math.floor(time.time()))
+        zip_name = SERVER_DEFAULT_SID + '_' + str(math.floor(time.time()))
         payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
 
         payload = open(payload_path, 'rb')
 
-        custom_manifest = {'recipient': jobs.client_sid, 'sender': server_default_sid, 'type': None}
+        custom_manifest = {
+            'recipient': jobs.client_sid,
+            'sender': SERVER_DEFAULT_SID,
+            'type': None
+        }
 
         # If code is 1, an error occured.
         if code == 1:
@@ -410,6 +418,7 @@ def server_cleanup_store(bundle):
     # Finally, remove the id.
     # If it fails, just return.
     global CLEANUP_BUNDLES
+    global SERVAL
 
     stored_bundle_ids = CLEANUP_BUNDLES[bundle.bundle_id]
 
@@ -425,11 +434,8 @@ def server_cleanup_store(bundle):
 def server_listen(queue):
     '''Main listening function.
     '''
-    global SERVER_MODE
+    global SERVER_DEFAULT_SID
     global SERVAL
-    global server_default_sid
-    global CLEANUP_BUNDLES
-    SERVER_MODE = RUNNING
 
 
     # Create a RESTful serval_client to Serval with the parameters from the config file
@@ -441,7 +447,7 @@ def server_listen(queue):
             passwd=CONFIGURATION['passwd']
         )
     rhizome = SERVAL.rhizome
-    server_default_sid = SERVAL.keyring.default_identity().sid
+    SERVER_DEFAULT_SID = SERVAL.keyring.default_identity().sid
 
     # At this point we can publish all offered procedures.
     # The publish function is executed once at startup and then every 30 seconds.
@@ -451,7 +457,7 @@ def server_listen(queue):
     token = all_bundles[0].bundle_id
 
     # This is the main server loop.
-    while SERVER_MODE:
+    while True:
         bundles = rhizome.get_bundlelist()
         for bundle in bundles:
             if bundle.bundle_id == token:
@@ -467,7 +473,7 @@ def server_listen(queue):
             except DecryptionError:
                 continue
 
-            if not potential_call.manifest.recipient == server_default_sid:
+            if not potential_call.manifest.recipient == SERVER_DEFAULT_SID:
                 continue
 
             # If the bundle is a call, we start a handler thread.

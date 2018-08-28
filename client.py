@@ -19,16 +19,7 @@ from pyserval.exceptions import DecryptionError
 import sys
 from job import Status, Job, FileNotFound
 
-my_sid = None
-PROCEDURES = {}
-
-SERVAL = None
-
 def client_call(job_file_path):
-    # Create a RESTful serval_client to Serval with the parameters from the config file
-    # and get the Rhizome serval_client.
-    global SERVAL
-
     # Create a RESTful serval_client to Serval with the parameters from the config file
     # and get the Rhizome serval_client.
     SERVAL = Client(
