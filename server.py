@@ -95,7 +95,7 @@ def server_publish_procedures():
             procedures_bundle = SERVAL.rhizome.get_bundle(offer_bundle_id)
             procedures_bundle.update_payload(payload)
         else:
-            procedures_bundle = SERVAL.rhizome.new_bundle(
+            SERVAL.rhizome.new_bundle(
                 name=server_default_sid,
                 payload=payload,
                 service=utilities.OFFER
@@ -176,16 +176,6 @@ def server_offering_procedure(procedure):
 
         return False
 
-def server_parse_call(call):
-    '''Parse the incomming call.
-    Args:
-        call (Bundle): The call to be parsed.
-
-    Returns:
-        Procedure: The parsed procedure.
-    '''
-    return Procedure(name=call.manifest.name, args=call.manifest.args.split('|'))
-
 def server_execute_procedure(procedure, env_path):
     '''Main execution function.
     Args:
@@ -240,192 +230,194 @@ def server_thread_handle_call(potential_call):
     '''
     pinfo('Received call. Will check if procedure is offered.')
 
-    # First step, parse the potential call.
-    procedure = server_parse_call(potential_call)
+    global CLEANUP_BUNDLES
 
-    if server_offering_procedure(procedure):
-        client_sid = None
+    client_sid = None
 
-        # If the server offers the procedure,
-        # we first have to download the file because it will be removed as soon we send the ack.
-        # If in the next line might be obscolete, because only the text is sent to all servers not the file itself
-        path = '/tmp/%s_%s' % (procedure.name, potential_call.manifest.version)
-        with open(path, 'wb') as zip_file:
-            zip_payload = SERVAL.rhizome.get_payload(potential_call)
-            zip_file.write(zip_payload)
+    # If the server offers the procedure,
+    # we first have to download the file because it will be removed as soon we send the ack.
+    # If in the next line might be obscolete, because only the text is sent to all servers not the file itself
+    path = '/tmp/%s_%s' % (potential_call.manifest.name, potential_call.manifest.version)
+    with open(path, 'wb') as zip_file:
+        zip_file.write(potential_call.payload)
 
-        jobs = None
-        job_file_path = None
+    jobs = None
+    job_file_path = None
 
-        extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, server_default_sid)
+    extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, server_default_sid)
 
-        # If we have a valid ZIP file, we extract it and parse the job file.
-        if zipfile.is_zipfile(path):
-            file_list = utilities.extract_zip(path, extract_path)
+    # If we have a valid ZIP file, we extract it and parse the job file.
+    if zipfile.is_zipfile(path):
+        file_list = utilities.extract_zip(path, extract_path)
 
-            # Find the job file
-            for _file in file_list:
-                if _file.endswith('.jb'):
-                    jobs = utilities.parse_jobfile(_file)
-                    job_file_path = _file
-        else:
-            pfatal('{} is not a valid ZIP file.' + path)
-            return
-
-        if jobs is None:
-            raise MalformedJobfileError
-
-        # Now we have all parts from the jobfile. Let's remember the real client_sid.
-        client_sid = jobs.client_sid
-
-        # Further execution will happen on /tmp, so we remember the CWD for later.
-        cwd  = os.getcwd()
-        os.chdir(extract_path)
-
-        possible_job = None
-        possible_next_job = None
-
-        # Now, we iterate through all jobs and try to find a job for us.
-        # We remember our job and the job for the next hop, if possible.
-        for job in jobs.joblist:
-            if job.status == Status.OPEN and job.server == server_default_sid:
-                possible_job = job
-                try:
-                    current_position = jobs.joblist.index(possible_job)
-                    possible_next_job = jobs.joblist[current_position + 1]
-                except IndexError:
-                    pass
-                break
-
-        # Since we have our procedure, we create an object of it.
-        procedure_to_execute = Procedure(name=possible_job.procedure, args=possible_job.arguments)
-
-        # Let's do a final check, if the procedure is offered.
-        if procedure_to_execute is None or not server_offering_procedure(procedure_to_execute):
-            pfatal("Server is not offering this procedure.")
-            return
-
-        # Since we are not confident about the job, we sent an ACK and start processing.
-        try:
-            SERVAL.rhizome.new_bundle(
-                name=potential_call.manifest.name,
-                payload="",
-                service="RPC",
-                recipient=client_sid,
-                custom_manifest={"type": ACK, 'args': 'jobfile'}
-            )
-        except DuplicateBundleException as e:
-            pass
-
-        pinfo('Ack is sent. Will execute procedure.')
-
-        # After sending the ACK, start the execution.
-        code, result = server_execute_procedure(procedure_to_execute, extract_path)
-        result_decoded = result.decode('utf-8')
-
-        # Here we need to prepare the job for the next hop.
-        if possible_next_job is not None:
-            # After executing the job, we have to update the job_file.
-            # Therefore, we read it.
-            job_file = open(job_file_path, 'r+')
-            lines = job_file.readlines()
-
-            if code == 0:
-                # The execution was successful, so we append DONE to the corresponding line.
-                lines[possible_job.line] =  utilities.insert_to_line(lines[possible_job.line], 'DONE')
-            else:
-                # Something went wrong, we append ERROR to the line.
-                lines[possible_job.line] =  utilities.insert_to_line(lines[possible_job.line], 'ERROR')
-
-            lines[possible_next_job.line] = lines[possible_next_job.line].replace('##', result_decoded.replace(extract_path, ''))
-            pdebug(lines[possible_next_job.line])
-
-            # So, the file has been updated, so we can write the content and close it.
-            job_file.seek(0)
-            for line in lines:
-                job_file.write(line)
-            job_file.close()
-
-            # If the next server is again any, we search a new one for the next job
-            if possible_next_job.server == 'any':
-                servers = utilities.find_available_servers(SERVAL.rhizome, possible_next_job, server_default_sid)
-
-                if not servers:
-                    # TODO: Here we have to have some error handling!
-                    pfatal("Could not find any suitable servers. Aborting.")
-                    return
-
-                possible_next_job.server = servers[0]
-                utilities.replace_any_to_sid(job_file_path, possible_next_job.line, possible_next_job.server)
-
-            # Done. Now we only have to make the payload...
-            zip_name = server_default_sid + '_' + str(math.floor(time.time()))
-            payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
-
-            payload = open(payload_path, 'rb')
-
-            # ... and send the bundle.
-            new_bundle = SERVAL.rhizome.new_bundle(
-                name=possible_next_job.procedure,
-                payload=payload.read(),
-                service="RPC",
-                recipient=possible_next_job.server,
-                custom_manifest={"type": CALL, 'args': 'jobfile'}
-            )
-
-        else:
-            zip_name = server_default_sid + '_' + str(math.floor(time.time()))
-            payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
-
-            payload = open(payload_path, 'rb')
-
-            custom_manifest={'recipient': jobs.client_sid, 'sender': server_default_sid, 'type': None}
-
-            # If code is 1, an error occured.
-            if code == 1:
-                custom_manifest['type'] = ERROR
-            else:
-                custom_manifest['type'] = RESULT
-
-
-            new_bundle = SERVAL.rhizome.new_bundle(
-                name=procedure_to_execute.name,
-                payload=payload.read(),
-                service="RPC",
-                custom_manifest=custom_manifest
-            )
-
-        payload.close()
-        os.chdir(cwd)
-
+        # Find the job file
+        for _file in file_list:
+            if _file.endswith('.jb'):
+                jobs = utilities.parse_jobfile(_file)
+                job_file_path = _file
     else:
-        # In this case, the server does not offer the procedure.
-        # Therefore, the client will be informed with an error.
-        new_bundle = SERVAL.rhizome.new_bundle(
+        pfatal('{} is not a valid ZIP file.' + path)
+        return
+
+    if jobs is None:
+        raise MalformedJobfileError
+
+    # Now we have all parts from the jobfile. Let's remember the real client_sid.
+    client_sid = jobs.client_sid
+
+    # Further execution will happen on /tmp, so we remember the CWD for later.
+    cwd  = os.getcwd()
+    os.chdir(extract_path)
+
+    possible_job = None
+    possible_next_job = None
+
+    # Now, we iterate through all jobs and try to find a job for us.
+    # We remember our job and the job for the next hop, if possible.
+    for job in jobs.joblist:
+        if job.status == Status.OPEN and job.server == server_default_sid:
+            possible_job = job
+            try:
+                current_position = jobs.joblist.index(possible_job)
+                possible_next_job = jobs.joblist[current_position + 1]
+            except IndexError:
+                pass
+            break
+
+    # Since we have our procedure, we create an object of it.
+    procedure_to_execute = Procedure(name=possible_job.procedure, args=possible_job.arguments)
+
+    # Let's do a final check, if the procedure is offered.
+    if procedure_to_execute is None or not server_offering_procedure(procedure_to_execute):
+        pfatal("Server is not offering this procedure.")
+        # TODO Error handling!
+        return
+
+    # Since we are not confident about the job, we sent an ACK and start processing.
+    try:
+        SERVAL.rhizome.new_bundle(
             name=potential_call.manifest.name,
             payload="",
             service="RPC",
-            recipient=potential_call.sender,
-            custom_manifest={"type": ERROR, 'args': potential_call.manifest.args, 'result': 'Server does not offer procedure.'}
+            recipient=client_sid,
+            custom_manifest={"type": ACK}
+        )
+    except DuplicateBundleException as e:
+        pass
+
+    pinfo('Ack is sent. Will execute procedure.')
+
+    # After sending the ACK, start the execution.
+    code, result = server_execute_procedure(procedure_to_execute, extract_path)
+    result_decoded = result.decode('utf-8')
+
+    # Here we need to prepare the job for the next hop.
+    if possible_next_job is not None:
+        # After executing the job, we have to update the job_file.
+        # Therefore, we read it.
+        job_file = open(job_file_path, 'r+')
+        lines = job_file.readlines()
+
+        if code == 0:
+            # The execution was successful, so we append DONE to the corresponding line.
+            lines[possible_job.line] =  utilities.insert_to_line(lines[possible_job.line], 'DONE')
+        else:
+            # Something went wrong, we append ERROR to the line.
+            lines[possible_job.line] =  utilities.insert_to_line(lines[possible_job.line], 'ERROR')
+
+        lines[possible_next_job.line] = lines[possible_next_job.line].replace('##', result_decoded.replace(extract_path, ''))
+
+        # So, the file has been updated, so we can write the content and close it.
+        job_file.seek(0)
+        for line in lines:
+            job_file.write(line)
+        job_file.close()
+
+        # If the next server is again any, we search a new one for the next job
+        if possible_next_job.server == 'any':
+            servers = utilities.find_available_servers(SERVAL.rhizome, possible_next_job, server_default_sid)
+
+            if not servers:
+                # TODO: Here we have to have some error handling!
+                pfatal("Could not find any suitable servers. Aborting.")
+                return
+
+            possible_next_job.server = servers[0]
+            utilities.replace_any_to_sid(job_file_path, possible_next_job.line, possible_next_job.server)
+
+        # Done. Now we only have to make the payload...
+        zip_name = server_default_sid + '_' + str(math.floor(time.time()))
+        payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
+
+        payload = open(payload_path, 'rb')
+
+        # ... and send the bundle.
+        next_hop_bundle = SERVAL.rhizome.new_bundle(
+            name=possible_next_job.procedure,
+            payload=payload.read(),
+            service="RPC",
+            recipient=possible_next_job.server,
+            custom_manifest={"type": CALL}
         )
 
-def server_cleanup_store(bundle, sid):
-    '''Cleans up all bundles involved in a call
-    Args:
-        bundle (Bundle):    The bundle which triggers the cleanup
-        sid (str):          Author SID for the bundle
-    '''
+        id_to_store = next_hop_bundle.bundle_id
+        if potential_call.bundle_id in CLEANUP_BUNDLES:
+            CLEANUP_BUNDLES[potential_call.bundle_id].append(id_to_store)
+        else:
+            CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
+
+        pdebug("Added {} to list: {}.".format(potential_call.bundle_id, CLEANUP_BUNDLES))
+
+    else:
+        zip_name = server_default_sid + '_' + str(math.floor(time.time()))
+        payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
+
+        payload = open(payload_path, 'rb')
+
+        custom_manifest={'recipient': jobs.client_sid, 'sender': server_default_sid, 'type': None}
+
+        # If code is 1, an error occured.
+        if code == 1:
+            custom_manifest['type'] = ERROR
+        else:
+            custom_manifest['type'] = RESULT
+
+
+        result_bundle = SERVAL.rhizome.new_bundle(
+            name=procedure_to_execute.name,
+            payload=payload.read(),
+            service="RPC",
+            custom_manifest=custom_manifest
+        )
+
+        id_to_store = result_bundle.bundle_id
+        if potential_call.bundle_id in CLEANUP_BUNDLES:
+            CLEANUP_BUNDLES[potential_call.bundle_id].append(id_to_store)
+        else:
+            CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
+        pdebug("AAdded {} to list: {}.".format(potential_call.bundle_id, CLEANUP_BUNDLES))
+
+    payload.close()
+    os.chdir(cwd)
+
+def server_cleanup_store(bundle):
     # Try to lookup the BID for the Bundle to be cleaned,
     # make a new clear bundle based on the gathered BID and insert this bundle.
     # Finally, remove the id.
     # If it fails, just return.
-    try:
-        result_bundle_id = CLEANUP_BUNDLES[bundle.id]
-        clear_bundle = utilities.make_bundle([('type', CLEANUP)], True)
-        rhizome.insert(clear_bundle, '', sid, result_bundle_id)
-        del CLEANUP_BUNDLES[bundle.id]
-    except KeyError:
-        return
+    global CLEANUP_BUNDLES
+    pdebug("CLEANUP BUNDLES: {}".format(CLEANUP_BUNDLES))
+
+    stored_bundle_ids = CLEANUP_BUNDLES[bundle.bundle_id]
+
+    for stored_bundle_id in stored_bundle_ids:
+        stored_bundle = SERVAL.rhizome.get_bundle(stored_bundle_id)
+        stored_bundle.refresh()
+        stored_bundle.manifest.type = CLEANUP
+        stored_bundle.payload = ""
+        stored_bundle.update()
+
+    CLEANUP_BUNDLES.pop(bundle.bundle_id, None)
 
 def server_listen(delete=False):
     '''Main listening function.
@@ -433,6 +425,7 @@ def server_listen(delete=False):
     global SERVER_MODE
     global SERVAL
     global server_default_sid
+    global CLEANUP_BUNDLES
     SERVER_MODE = RUNNING
 
     # Create a RESTful serval_client to Serval with the parameters from the config file
@@ -479,9 +472,9 @@ def server_listen(delete=False):
 
             # If the bundle is a cleanup file, we start the cleanup routine.
             # TODO Cleanup doesnt work with cc
-            elif potential_call.manifest.type == CLEANUP:
-                pass
-                #server_cleanup_store(potential_call, server_default_sid)
+            elif potential_call.manifest.type == CLEANUP: # and potential_call.bundle_id in CLEANUP_BUNDLES:
+                pdebug("Got cleanup for {}".format(potential_call.bundle_id))
+                server_cleanup_store(potential_call)
 
         token = bundles[0].bundle_id
 

@@ -47,8 +47,6 @@ def client_call(job_file_path):
 
     first_job = jobs.joblist[0]
 
-    pdebug(first_job.line)
-
     # If the server address is 'any', we have to find a server, which offers this procedure.
     if first_job.server == 'any':
         servers = utilities.find_available_servers(rhizome, first_job)
@@ -76,12 +74,12 @@ def client_call(job_file_path):
     payload = open(zip_file, 'rb')
 
     # create new bundle with default identity
-    new_bundle = rhizome.new_bundle(
+    call_bundle = rhizome.new_bundle(
         name=first_job.procedure,
         payload=payload.read(),
         service="RPC",
         recipient=first_job.server,
-        custom_manifest={"type": CALL, 'args': 'jobfile'}
+        custom_manifest={"type": CALL}
     )
 
     payload.close()
@@ -112,7 +110,6 @@ def client_call(job_file_path):
                 continue
 
             if not potential_result.manifest.name == first_job.procedure:
-                pdebug("Not the right procedure: {}:{}".format(potential_result.manifest.name, first_job.procedure))
                 continue
 
             # At this point, we know that there is a RPC file in the store
@@ -127,12 +124,9 @@ def client_call(job_file_path):
                 # If it is a file, download it and return the path to the
                 # downloaded file.
                 # Otherwise, just return the result.
-                result_str = ''
                 path = '/tmp/%s_%s' % (potential_result.manifest.name, potential_result.manifest.version)
                 with open(path, 'wb') as zip_file:
-                    zip_payload = SERVAL.rhizome.get_payload(potential_result)
-                    zip_file.write(zip_payload)
-                    result_str = path
+                    zip_file.write(potential_result.payload)
 
                 # The final step is to clean up the store.
                 # Therefore, we create a new bundle with an
@@ -141,17 +135,11 @@ def client_call(job_file_path):
                 # the call bundle will be updated with an empty file.
                 # This type will instruct the server to clean up
                 # the files involved during this RPC.
-                #if server != 'all' or server != 'broadcast':
-                # clear_bundle = utilities.make_bundle([
-                #     ('type', CLEANUP),
-                #     ('name', name),
-                #     ('args', args),
-                #     ('sender', my_sid.sid)
-                # ])
-                # FIXME rework cleanup
-                #rhizome.insert(clear_bundle, '', my_sid.sid, call_bundle.id)
+                call_bundle.manifest.type = CLEANUP
+                call_bundle.payload = ""
+                call_bundle.update()
 
-                pinfo('Received result: %s' % result_str)
+                pinfo('Received result: %s' % path)
                 result_received = True
 
             if potential_result.manifest.type == ERROR:

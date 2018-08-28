@@ -48,7 +48,7 @@ RESULT = 2
 ERROR = 3
 CLEANUP = 4
 
-OFFER = 'RPC_OFFER'
+OFFER = 'RPCOFFER'
 
 # Hold the configuration read from config file.
 CONFIGURATION = {}
