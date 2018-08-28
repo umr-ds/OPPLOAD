@@ -1,6 +1,6 @@
-int add int int
-int size file file
-file get int
-file echo file file
-file zip file
-file trace_servers file
+add int int
+size file file
+get int
+echo file file
+zip file
+trace_servers file
