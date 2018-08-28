@@ -62,18 +62,3 @@ class Status(Enum):
     OPEN = 0
     DONE = 1
     ERROR = 2
-
-class MalformedJobfileError(Exception):
-    pass
-
-class ServerNotFoundError(Exception):
-    pass
-
-class ServerNotOfferingProcedure(Exception):
-    pass
-
-class ArgumentMissmatchError(Exception):
-    pass
-
-class FileNotFound(Exception):
-    pass
