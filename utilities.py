@@ -81,8 +81,8 @@ def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
 
     if not read_config(config_path):
         sys.exit(1)
-    #if not serval_running():
-    #    sys.exit(1)
+    if not serval_running():
+        sys.exit(1)
     if server_checks and not config_files_present():
         sys.exit(1)
     if client_jobfle and not os.path.exists(client_jobfle):
@@ -203,7 +203,6 @@ def replace_any_to_sid(job_file_path, linecounter, sid):
         job_file.close()
 
 def serval_running():
-    # TODO: needs revision!
     '''Check is Serval is running.
     Returns:
         bool: True, if Serval is running, false otherwise.
@@ -214,21 +213,13 @@ def serval_running():
             port=int(CONFIGURATION['port']),
             user=CONFIGURATION['user'],
             passwd=CONFIGURATION['passwd']
-        )
-        return True
+        ).keyring.get_identities()
     except requests.exceptions.ConnectionError:
         pfatal('Serval is not running or not listening on %s:%s. Aborting.' \
                   % (CONFIGURATION['host'], CONFIGURATION['port'])
               )
-    except requests.exceptions.HTTPError as http_error:
-        if http_error.response.status_code == 401:
-            pfatal('Serval returned an Unauthorized exception.' \
-                      'You should check the credentials: %s:%s' \
-                      % (CONFIGURATION['user'], CONFIGURATION['passwd'])
-                  )
-        else:
-            pfatal('An error occured. Aborting. : %s' % http_error)
-    return False
+        return False
+    return True
 
 def is_server_address(sid):
     '''Simple function to check if a SID is realy a SID.
