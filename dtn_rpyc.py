@@ -49,6 +49,14 @@ class DTNRPyC(object):
             action='store_true',
             help='Start the server listening.'
         )
+
+        parser.add_argument(
+            '-q',
+            '--queue',
+            action='store_true',
+            help='The server should execute calls sequentially instead of parallel.'
+        )
+
         group.add_argument(
             '-c',
             '--client',
@@ -64,7 +72,7 @@ class DTNRPyC(object):
         # and do some other checks (for server or client, respectively).
         if args.server:
             utilities.pre_exec_checks(args.config_path, server_checks=True)
-            server.server_listen()
+            server.server_listen(args.queue)
         elif args.job_file_path:
             utilities.pre_exec_checks(args.config_path, client_jobfle=args.job_file_path)
             client.client_call(args.job_file_path)

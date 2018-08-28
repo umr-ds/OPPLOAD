@@ -222,7 +222,8 @@ def server_execute_procedure(procedure, env_path):
         pinfo('Execution of \'%s\' was successfull with result %s' % (procedure.name, out))
         return (0, out.rstrip())
 
-def server_thread_handle_call(potential_call):
+
+def server_handle_call(potential_call):
     '''Main handler function for an incoming call.
     Args:
         potential_call (Bundle):    The potential call, which has to be handled.
@@ -366,8 +367,6 @@ def server_thread_handle_call(potential_call):
         else:
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
-        pdebug("Added {} to list: {}.".format(potential_call.bundle_id, CLEANUP_BUNDLES))
-
     else:
         zip_name = server_default_sid + '_' + str(math.floor(time.time()))
         payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
@@ -395,7 +394,6 @@ def server_thread_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id].append(id_to_store)
         else:
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
-        pdebug("AAdded {} to list: {}.".format(potential_call.bundle_id, CLEANUP_BUNDLES))
 
     payload.close()
     os.chdir(cwd)
@@ -406,7 +404,6 @@ def server_cleanup_store(bundle):
     # Finally, remove the id.
     # If it fails, just return.
     global CLEANUP_BUNDLES
-    pdebug("CLEANUP BUNDLES: {}".format(CLEANUP_BUNDLES))
 
     stored_bundle_ids = CLEANUP_BUNDLES[bundle.bundle_id]
 
@@ -419,7 +416,7 @@ def server_cleanup_store(bundle):
 
     CLEANUP_BUNDLES.pop(bundle.bundle_id, None)
 
-def server_listen(delete=False):
+def server_listen(queue):
     '''Main listening function.
     '''
     global SERVER_MODE
@@ -427,6 +424,7 @@ def server_listen(delete=False):
     global server_default_sid
     global CLEANUP_BUNDLES
     SERVER_MODE = RUNNING
+
 
     # Create a RESTful serval_client to Serval with the parameters from the config file
     # and get the Rhizome serval_client.
@@ -468,12 +466,14 @@ def server_listen(delete=False):
 
             # If the bundle is a call, we start a handler thread.
             if potential_call.manifest.type == CALL:
-                start_new_thread(server_thread_handle_call, (potential_call, ))
+                if queue:
+                    server_handle_call(potential_call)
+                else:
+                    start_new_thread(server_handle_call, (potential_call, ))
 
             # If the bundle is a cleanup file, we start the cleanup routine.
             # TODO Cleanup doesnt work with cc
             elif potential_call.manifest.type == CLEANUP: # and potential_call.bundle_id in CLEANUP_BUNDLES:
-                pdebug("Got cleanup for {}".format(potential_call.bundle_id))
                 server_cleanup_store(potential_call)
 
         token = bundles[0].bundle_id
