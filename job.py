@@ -48,6 +48,8 @@ class Job:
         else:
             status = Status.ERROR
 
+        self.arguments = list(map(lambda x: x.strip(), self.arguments))
+
     def get_filters(self):
         return self.filter_dict
 

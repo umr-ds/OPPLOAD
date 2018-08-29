@@ -1,6 +1,5 @@
 #!/bin/bash
 
-FILENAME=$1
 SERVALINSTANCE_PATH=$SESSION_DIR/`hostname`.conf
 SID=`servald id self | tail -1`
 HOSTNAME=`hostname`
@@ -9,7 +8,7 @@ STARTTIME=`date +%s%N`
 # HERE WILL BE SOME GREATE PROCEDURE STUFF
 
 ENDTIME=`date +%s%N`
-echo "$STARTTIME, $SID,  $HOSTNAME, $ENDTIME" >> $1
-echo $1
 
+echo "$STARTTIME, $SID, $HOSTNAME, $ENDTIME" >> $1
+echo $1
 exit 0

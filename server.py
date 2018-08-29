@@ -61,7 +61,7 @@ def server_publish_procedures():
         # Build the payload containing all offered procedures
         payload = 'procedures: {}\n'.format(opc)
         for procedure in offered_procedures:
-            procedure_str = str(procedure)
+            procedure_str = str(procedure) + "\n"
             payload = payload + procedure_str
 
         payload = payload + 'capabilities: {}\n'.format(cc)
@@ -185,6 +185,7 @@ def server_execute_procedure(job, env_path):
     for i in range(len(job.arguments)):
         if offered_job.arguments[i] == 'file':
             job.arguments[i] = env_path + job.arguments[i]
+            job.arguments[i] = job.arguments[i].replace('//', '/')
 
     job_process = subprocess.Popen(
         bin_path % (job.procedure, ' '.join(job.arguments)),
@@ -269,14 +270,10 @@ def server_handle_call(potential_call):
         return
 
     if jobs is None:
-        raise MalformedJobfileError
+        return
 
     # Now we have all parts from the jobfile. Let's remember the real client_sid.
     client_sid = jobs.client_sid
-
-    # Further execution will happen on /tmp, so we remember the CWD for later.
-    cwd  = os.getcwd()
-    os.chdir(extract_path)
 
     possible_job = None
     possible_next_job = None
@@ -416,7 +413,6 @@ def server_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
     payload.close()
-    os.chdir(cwd)
 
 def server_cleanup_store(bundle):
     # Try to lookup the BID for the Bundle to be cleaned,

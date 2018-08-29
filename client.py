@@ -42,7 +42,7 @@ def client_call(job_file_path):
 
     # If the server address is 'any', we have to find a server, which offers this procedure.
     if first_job.server == 'any':
-        servers = utilities.find_available_servers(rhizome, first_job)
+        servers = utilities.find_available_servers(rhizome, first_job, client_default_sid)
 
         if not servers:
             pfatal("Could not find any suitable servers. Aborting.")
@@ -58,9 +58,10 @@ def client_call(job_file_path):
         first_job.procedure, first_job.server, str(math.floor(time.time())))
 
     for arg in first_job.arguments:
-        if not os.path.isfile(first_job.arguments[0]):
+        if not os.path.isfile(arg):
             continue
         zip_list.append(arg)
+
     # create zipfile
     zip_list.append(job_file_path)
     zip_list = list(map(str.strip, zip_list))
@@ -80,10 +81,9 @@ def client_call(job_file_path):
 
     payload.close()
 
-    all_bundles = rhizome.get_bundlelist()
-    token = all_bundles[0].bundle_id
-
+    token = call_bundle.bundle_id
     result_received = False
+
     while not result_received:
         bundles = rhizome.get_bundlelist()
 

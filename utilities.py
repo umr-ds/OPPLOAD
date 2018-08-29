@@ -147,7 +147,7 @@ def insert_to_line(line, appendix):
     ret_line = line[0] + '|' + line[1]
     return ret_line
 
-def find_available_servers(rhizome, first_job, server_sid=None):
+def find_available_servers(rhizome, first_job, own_sid):
     # If there are no bundles, the are no servers offering anything. Abort.
     bundles = rhizome.get_bundlelist()
     if not bundles:
@@ -158,7 +158,7 @@ def find_available_servers(rhizome, first_job, server_sid=None):
         if not bundle.manifest.service == OFFER:
             continue
 
-        if server_sid is not None and bundle.manifest.sender == server_sid:
+        if bundle.manifest.sender == own_sid:
             continue
 
         # We found an offer bundle. Therefore download the content...
@@ -170,8 +170,7 @@ def find_available_servers(rhizome, first_job, server_sid=None):
             if offered_job[0] == '' or 'capabilities' in offer:
                 break
             if offered_job[0] == first_job.procedure and len(
-                    offered_job[1:]) == len(
-                        first_job.arguments) and bundle.manifest.name:
+                    offered_job[1:]) == len(first_job.arguments):
                 if not first_job.filter_dict:
                     server_list.append(bundle.manifest.name)
                 else:
