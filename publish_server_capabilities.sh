@@ -14,7 +14,7 @@ then
 else
     gps_coord=$(cat ../$host | tr " " ":" | awk -vOFS='=' '{print "gps", $1}')
 fi
-disk_space=$(df -h | grep $FILESYSTEM | awk -F' ' -vOFS='=' '{print "disk_space", $4}')
+disk_space=$(df | grep $FILESYSTEM | awk -F' ' -vOFS='=' '{print "disk_space", $4}')
 avg_load=$(cat /proc/loadavg | awk -F' ' -vOFS='=' '{print "cpu_load", $3}')
-cpu_cores=$(lscpu | grep "CPU(s)" | head -1 | awk -F' ' -vOFS='=' '{print "cpu_cores", $2}')
-echo "$disk_space $avg_load $cpu_cores" | tr " " "\n" > /tmp/dtnrpc/rpc.caps
+memory=$(free -t | tail -1 | rev | cut -d" " -f1 | rev)
+echo "$disk_space $avg_load $memory $gps_coord" | tr " " "\n" > /tmp/dtnrpc/rpc.caps

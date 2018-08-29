@@ -345,15 +345,18 @@ def server_handle_call(potential_call):
 
         # If the next server is again any, we search a new one for the next job
         if possible_next_job.server == 'any':
-            servers = utilities.find_available_servers(
-                SERVAL.rhizome, possible_next_job, SERVER_DEFAULT_SID)
-
+            servers = utilities.parse_available_servers(SERVAL.rhizome, SERVER_DEFAULT_SID)
             if not servers:
-                # TODO: Here we have to have some error handling!
                 pfatal("Could not find any suitable servers. Aborting.")
                 return
 
-            possible_next_job.server = servers[0]
+            servers = utilities.find_available_servers(servers, possible_next_job)
+            if not servers:
+                pfatal("Could not find any suitable servers. Aborting.")
+                return
+
+            possible_next_job.server = utilities.select_server(servers, CONFIGURATION['server']).sid
+
             utilities.replace_any_to_sid(job_file_path, possible_next_job.line, possible_next_job.server)
 
         # Done. Now we only have to make the payload...

@@ -9,11 +9,14 @@ import sys
 import string
 import zipfile
 import errno
+import random
+import math
 
 import requests
+from numpy.random import gamma
 from pyserval.client import Client
 
-import job
+from job import Jobfile, Job
 
 
 # ANSI color codes.
@@ -51,9 +54,63 @@ ERROR = 3
 CLEANUP = 4
 
 OFFER = 'RPCOFFER'
+FIRST = 'first'
+RANDOM = 'random'
+BEST = 'best'
+PROB = 'probabilistic'
 
 # Hold the configuration read from config file.
 CONFIGURATION = {}
+
+# This are the available capabilities.
+filter_keywords = ['gps_coord', 'cpu_load', 'memory', 'disk_space']
+
+class Server():
+    def __init__(self,
+                 sid,
+                 jobs=None,
+                 gps_coord=None,
+                 cpu_load=None,
+                 memory=None,
+                 disk_space=None):
+        self.sid = sid
+        self.gps_coord = gps_coord
+        self.cpu_load = cpu_load
+        self.memory = memory
+        self.disk_space = disk_space
+        self.jobs = jobs
+
+def sort_servers(server_list):
+    return sorted(server_list, key=lambda x: (x.gps_coord, x.cpu_load, -(x.memory), -(x.disk_space)))
+
+def select_first_server(server_list):
+    return server_list[0]
+
+def select_random_server(server_list):
+    return random.choice(server_list)
+
+def select_best_server(server_list):
+    return sort_servers(server_list)[0]
+
+def select_probabilistic_server(server_list):
+    sorted_server_list = sort_servers(server_list)
+    index = round(gamma(2.0))
+    try:
+        return sorted_server_list[index]
+    except IndexError:
+        return sorted_server_list[-1]
+
+
+def select_server(server_list, selection_type=FIRST):
+    if selection_type == FIRST:
+        return select_first_server(server_list)
+
+    if selection_type == RANDOM:
+        return select_random_server(server_list)
+
+    if selection_type == BEST:
+        return
+
 
 def config_files_present():
     '''Checks if the binary path and the procedure definitions file exist.
@@ -147,8 +204,7 @@ def insert_to_line(line, appendix):
     ret_line = line[0] + '|' + line[1]
     return ret_line
 
-def find_available_servers(rhizome, first_job, own_sid):
-    # If there are no bundles, the are no servers offering anything. Abort.
+def parse_available_servers(rhizome, own_sid):
     bundles = rhizome.get_bundlelist()
     if not bundles:
         return None
@@ -161,33 +217,71 @@ def find_available_servers(rhizome, first_job, own_sid):
         if bundle.manifest.sender == own_sid:
             continue
 
-        # We found an offer bundle. Therefore download the content...
+        jobs = []
+        capabilities = {}
+
         offers = rhizome.get_payload(bundle).decode("utf-8").split('\n')
-
-        # ... iterate over the lines and see if this is the procedure we searching for.
         for offer in offers:
-            offered_job = offer.split(' ')
-            if offered_job[0] == '' or 'capabilities' in offer:
-                break
-            if offered_job[0] == first_job.procedure and len(
-                    offered_job[1:]) == len(first_job.arguments):
-                if not first_job.filter_dict:
-                    server_list.append(bundle.manifest.name)
-                else:
-                    fullfills = True
-                    for requirement in first_job.filter_dict:
-                        capability_line = [line for line in offers if requirement in line]
-                        capability_line = capability_line[0].split('=')
-                        capability_type = capability_line[0]
-                        capability_value = capability_line[1].rstrip()
-                        unpacked_requirement_value = first_job.filter_dict[requirement][0]
-                        unpacked_requirement_op = first_job.filter_dict[requirement][1]
-                        if not eval("{} {} {}".format(capability_value, unpacked_requirement_op, unpacked_requirement_value)):
-                            fullfills = False
-                            break
+            if ':' in offer:
+                continue
 
-                    if fullfills:
-                        server_list.append(bundle.manifest.name)
+            if not '=' in offer:
+                jobname = offer.split(' ')[0]
+                jobarguments = offer.split(' ')[1:]
+                jobs.append(Job(server=bundle.manifest.name, procedure=jobname, arguments=jobarguments))
+            else:
+                _type, _value = offer.split('=')
+                if _type == 'gps_coord':
+                    x1, y1 = _value.split(',')
+                    x2 = y2 = None
+                    with open(CONFIGURATION['location']) as coord_file:
+                        x2, y2 = coord_file.readline().split(' ')
+                        _value = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+
+                capabilities[_type] = _value
+
+        server_list.append(Server(bundle.manifest.name, jobs=jobs, **capabilities))
+
+    return server_list
+
+
+def find_available_servers(servers, job):
+
+    server_list = []
+
+    for server in servers:
+        if not job.filter_dict:
+            server_list.append(server)
+            continue
+
+        for offered_job in server.jobs:
+            if offered_job.procedure != job.procedure or len(offered_job.arguments) != len(job.arguments):
+                continue
+
+            fullfills = True
+            for requirement in job.filter_dict:
+                capability = getattr(server, requirement)
+                if not capability:
+                    server_list.append(server)
+                    continue
+
+                requirement_value = job.filter_dict[requirement]
+
+                if requirement == 'cpu_load' and int(capability) > int(requirement_value):
+                    fullfills = False
+                    break
+                if requirement == 'disk_space' and int(capability) < int(requirement_value):
+                    fullfills = False
+                    break
+                if requirement == 'memory' and int(capability) < int(requirement_value):
+                    fullfills = False
+                    break
+                if requirement == 'gps_coord' and int(capability) > requirement_value:
+                    fullfills = False
+                    break
+
+            if fullfills:
+                server_list.append(server)
 
     return server_list
 
@@ -296,7 +390,7 @@ def parse_jobfile(job_file_path):
                 if filter_type == '':
                     continue
                 elif filter_type[0] in filter_keywords:
-                    jobs.add_filter(filter_type[0], (filter_type[1], filter_type[2]))
+                    jobs.add_filter(filter_type[0], filter_type[1])
 
             counter = counter + 1
             # At this point we can ignore the remaining part of the line since
@@ -353,7 +447,7 @@ def parse_jobfile(job_file_path):
                     continue
 
                 elif fil[0] in filter_keywords:
-                    filter_dict[fil[0]] = (fil[1], fil[2].rstrip())
+                    filter_dict[fil[0]] = fil[1]
                     continue
                 else:
                     pwarn("Filter {} not found. Not applying this filter to job.".format(fil[0]))

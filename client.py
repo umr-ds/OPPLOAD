@@ -42,14 +42,20 @@ def client_call(job_file_path):
 
     # If the server address is 'any', we have to find a server, which offers this procedure.
     if first_job.server == 'any':
-        servers = utilities.find_available_servers(rhizome, first_job, client_default_sid)
-
+        servers = utilities.parse_available_servers(rhizome, client_default_sid)
         if not servers:
             pfatal("Could not find any suitable servers. Aborting.")
             return
 
-        # TODO: Here we have to implement the server selection mechanism
-        first_job.server = servers[0]
+        servers = utilities.find_available_servers(servers, first_job)
+        if not servers:
+            pfatal("Could not find any suitable servers. Aborting.")
+            return
+
+        first_job.server = utilities.select_server(servers, CONFIGURATION['server']).sid
+
+        pdebug(first_job.server)
+
         utilities.replace_any_to_sid(job_file_path, first_job.line, first_job.server)
 
     # set the payload to file
