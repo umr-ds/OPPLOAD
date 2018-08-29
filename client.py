@@ -54,6 +54,8 @@ def client_call(job_file_path):
 
     # set the payload to file
     zip_list = []
+    zip_file_base_path = "{}_{}_{}".format(
+        first_job.procedure, first_job.server, str(math.floor(time.time())))
 
     for arg in first_job.arguments:
         if not os.path.isfile(first_job.arguments[0]):
@@ -62,7 +64,8 @@ def client_call(job_file_path):
     # create zipfile
     zip_list.append(job_file_path)
     zip_list = list(map(str.strip, zip_list))
-    zip_file = utilities.make_zip(zip_list, client_default_sid + '_' + str(math.floor(time.time())))
+
+    zip_file = utilities.make_zip(zip_list, zip_file_base_path + "_call")
 
     payload = open(zip_file, 'rb')
 
@@ -117,8 +120,9 @@ def client_call(job_file_path):
                 # If it is a file, download it and return the path to the
                 # downloaded file.
                 # Otherwise, just return the result.
-                path = '/tmp/{}_{}_result.zip'.format(potential_result.manifest.name, call_bundle.manifest.version)
-                with open(path, 'wb') as zip_file:
+                result_path = zip_file_base_path + '_result.zip'
+
+                with open(result_path, 'wb') as zip_file:
                     zip_file.write(potential_result.payload)
 
                 # The final step is to clean up the store.
@@ -133,7 +137,7 @@ def client_call(job_file_path):
                 call_bundle.payload = ""
                 call_bundle.update()
 
-                pinfo('Received result: %s' % path)
+                pinfo('Received result: %s' % result_path)
                 result_received = True
 
             if potential_result.manifest.type == ERROR:

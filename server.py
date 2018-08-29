@@ -243,18 +243,20 @@ def server_handle_call(potential_call):
     # If the server offers the procedure,
     # we first have to download the file because it will be removed as soon we send the ack.
     # If in the next line might be obscolete, because only the text is sent to all servers not the file itself
-    path = '/tmp/{}_{}_{}_call.zip'.format(potential_call.manifest.name, potential_call.manifest.sender, potential_call.manifest.version)
-    with open(path, 'wb') as zip_file:
+    zip_file_base_path = "{}_{}_{}".format(potential_call.manifest.name,
+                                           potential_call.manifest.sender,
+                                           potential_call.manifest.version)
+
+    with open(zip_file_base_path + '_call.zip', 'wb') as zip_file:
         zip_file.write(potential_call.payload)
 
     jobs = None
     job_file_path = None
 
-    extract_path = '/tmp/{}_{}/'.format(potential_call.bundle_id, SERVER_DEFAULT_SID)
-
     # If we have a valid ZIP file, we extract it and parse the job file.
-    if zipfile.is_zipfile(path):
-        file_list = utilities.extract_zip(path, extract_path)
+    if zipfile.is_zipfile(zip_file_base_path + '_call.zip'):
+        file_list = utilities.extract_zip(zip_file_base_path + '_call.zip',
+                                          zip_file_base_path + "/")
 
         # Find the job file
         for _file in file_list:
@@ -262,7 +264,8 @@ def server_handle_call(potential_call):
                 jobs = utilities.parse_jobfile(_file)
                 job_file_path = _file
     else:
-        pfatal('{} is not a valid ZIP file.' + path)
+        pfatal('{} is not a valid ZIP file.' + zip_file_base_path +
+               '_call.zip')
         return
 
     if jobs is None:
@@ -316,7 +319,8 @@ def server_handle_call(potential_call):
     pinfo('Ack is sent. Will execute procedure.')
 
     # After sending the ACK, start the execution.
-    code, result = server_execute_procedure(possible_job, extract_path)
+    code, result = server_execute_procedure(possible_job,
+                                            zip_file_base_path + "/")
     result_decoded = result.decode('utf-8')
 
     # Here we need to prepare the job for the next hop.
@@ -333,7 +337,8 @@ def server_handle_call(potential_call):
             # Something went wrong, we append ERROR to the line.
             lines[possible_job.line] =  utilities.insert_to_line(lines[possible_job.line], 'ERROR')
 
-        lines[possible_next_job.line] = lines[possible_next_job.line].replace('##', result_decoded.replace(extract_path, ''))
+        lines[possible_next_job.line] = lines[possible_next_job.line].replace(
+            '##', result_decoded.replace(zip_file_base_path, ''))
 
         # So, the file has been updated, so we can write the content and close it.
         job_file.seek(0)
@@ -355,8 +360,10 @@ def server_handle_call(potential_call):
             utilities.replace_any_to_sid(job_file_path, possible_next_job.line, possible_next_job.server)
 
         # Done. Now we only have to make the payload...
-        zip_name = SERVER_DEFAULT_SID + '_' + str(math.floor(time.time()))
-        payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
+        payload_path = utilities.make_zip(
+            [result_decoded, job_file_path],
+            name=zip_file_base_path + "_result",
+            subpath_to_remove=zip_file_base_path + "/")
 
         payload = open(payload_path, 'rb')
 
@@ -376,8 +383,10 @@ def server_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
     else:
-        zip_name = SERVER_DEFAULT_SID + '_' + str(math.floor(time.time()))
-        payload_path = utilities.make_zip([result_decoded, job_file_path], name=zip_name, subpath_to_remove=extract_path)
+        payload_path = utilities.make_zip(
+            [result_decoded, job_file_path],
+            name=zip_file_base_path + "_result",
+            subpath_to_remove=zip_file_base_path + "/")
 
         payload = open(payload_path, 'rb')
 
