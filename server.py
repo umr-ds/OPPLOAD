@@ -19,6 +19,7 @@ from pyserval.exceptions import DuplicateBundleException, DecryptionError
 import utilities
 from utilities import pdebug, pinfo, pfatal, pwarn
 from utilities import ACK, CALL, CLEANUP, ERROR, RESULT, CONFIGURATION
+from utilities import RPC, OFFER
 from job import Status, Job
 
 # This is the global serval RESTful client object
@@ -54,7 +55,7 @@ def server_publish_procedures():
         offer_bundle_id = None
         bundles = SERVAL.rhizome.get_bundlelist()
         for bundle in bundles:
-            if bundle.from_here == 1 and bundle.manifest.service == utilities.OFFER:
+            if bundle.from_here == 1 and bundle.manifest.service == OFFER:
                 offer_bundle_id = bundle.bundle_id
                 break
 
@@ -77,7 +78,7 @@ def server_publish_procedures():
             SERVAL.rhizome.new_bundle(
                 name=SERVER_DEFAULT_SID,
                 payload=payload,
-                service=utilities.OFFER)
+                service=OFFER)
 
 def get_offered_procedures(rpc_defs):
     '''Parses the rpc definitions file and stores all of them in a list.
@@ -306,7 +307,7 @@ def server_handle_call(potential_call):
         SERVAL.rhizome.new_bundle(
             name=potential_call.manifest.name,
             payload="",
-            service="RPC",
+            service=RPC,
             recipient=client_sid,
             custom_manifest={"type": ACK}
         )
@@ -371,7 +372,7 @@ def server_handle_call(potential_call):
         next_hop_bundle = SERVAL.rhizome.new_bundle(
             name=possible_next_job.procedure,
             payload=payload.read(),
-            service="RPC",
+            service=RPC,
             recipient=possible_next_job.server,
             custom_manifest={"type": CALL}
         )
@@ -406,7 +407,7 @@ def server_handle_call(potential_call):
         result_bundle = SERVAL.rhizome.new_bundle(
             name=possible_job.procedure,
             payload=payload.read(),
-            service="RPC",
+            service=RPC,
             custom_manifest=custom_manifest)
 
         id_to_store = result_bundle.bundle_id
@@ -468,7 +469,7 @@ def server_listen(queue):
             if bundle.bundle_id == token:
                 break
 
-            if not bundle.manifest.service == 'RPC':
+            if not bundle.manifest.service == RPC:
                 continue
 
             # At this point, we have an call and have to start handling it.

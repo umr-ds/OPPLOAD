@@ -54,6 +54,8 @@ ERROR = 3
 CLEANUP = 4
 
 OFFER = 'RPCOFFER'
+RPC = 'RPC'
+
 FIRST = 'first'
 RANDOM = 'random'
 BEST = 'best'
@@ -332,9 +334,6 @@ def is_server_address(sid):
     return False
 
 def parse_jobfile(job_file_path):
-    # This are the available capabilities.
-    filter_keywords = ['cpu_cores', 'cpu_load', 'disk_space', 'power_state', 'power_percentage']
-
     # parse the jobfile if its well formed
     job_file = open(job_file_path, 'r+')
 
@@ -360,7 +359,7 @@ def parse_jobfile(job_file_path):
         return None
 
     # Create an empty jobs object. This will be filled in further execution.
-    jobs = job.Jobfile(client_sid)
+    jobs = Jobfile(client_sid)
 
     counter = 1
     for line in lines[1:]:

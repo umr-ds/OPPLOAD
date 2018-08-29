@@ -17,7 +17,7 @@ from pyserval.client import Client
 
 import utilities
 from utilities import pdebug, pfatal, pinfo
-from utilities import CALL, ACK, RESULT, ERROR, CLEANUP
+from utilities import CALL, ACK, RESULT, ERROR, CLEANUP, RPC
 from utilities import CONFIGURATION
 from job import Job
 
@@ -80,7 +80,7 @@ def client_call(job_file_path):
     call_bundle = rhizome.new_bundle(
         name=first_job.procedure,
         payload=payload.read(),
-        service="RPC",
+        service=RPC,
         recipient=first_job.server,
         custom_manifest={"type": CALL}
     )
@@ -101,7 +101,7 @@ def client_call(job_file_path):
             if bundle.bundle_id == token:
                 break
 
-            if not bundle.manifest.service == 'RPC':
+            if not bundle.manifest.service == RPC:
                 continue
 
             # Before further checks, we have to download the manifest
