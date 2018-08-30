@@ -1,0 +1,4 @@
+client_sid=<SID>
+any trace_servers /tmp/empty_file.txt | cpu_load:0.5 disk_space:700000
+any trace_servers ## | gps_coord:200
+any trace_servers ## | memory:413449

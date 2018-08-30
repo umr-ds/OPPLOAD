@@ -1,4 +1,0 @@
-client_sid=C2C2CE423950FA22EDF236247A0D5AB408A0103962E13B38CFCA9E7108F7B013
-F5A65BE015DF4641B22CBC7204A6730EFAD86F095D7DC7D8DD8BED6C1C6EC634 trace_servers /tmp/empty_file.txt | cpu_cores:2:> disk_space:4:>
-#any trace_servers | cpu_cores:4:>
-#any trace_servers | cpu_cores:8:>
