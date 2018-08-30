@@ -227,6 +227,29 @@ def is_capable(job):
 
     return True
 
+def return_error(call_bundle, reason, client_sid=None, file_list=[], zip_file_name=None):
+    payload_path = None
+    payload = None
+    if file_list:
+        payload_path = utilities.make_zip(
+            file_list,
+            name=zip_file_name + "_error.zip",
+            subpath_to_remove=zip_file_name)
+
+        payload = open(payload_path, 'r')
+
+    result_bundle = SERVAL.rhizome.new_bundle(
+        name=call_bundle.manifest.name,
+        payload=payload.read() if payload else "",
+        service=RPC,
+        recipient=client_sid,
+        custom_manifest={
+            'type': ERROR,
+            'reason': reason,
+            'originator': call_bundle.manifest.originator
+        })
+
+
 
 def server_handle_call(potential_call):
     '''Main handler function for an incoming call.
@@ -254,6 +277,7 @@ def server_handle_call(potential_call):
 
     jobs = None
     job_file_path = None
+    file_list = None
 
     # If we have a valid ZIP file, we extract it and parse the job file.
     if zipfile.is_zipfile(zip_file_base_path + '_call.zip'):
@@ -266,11 +290,24 @@ def server_handle_call(potential_call):
                 jobs = utilities.parse_jobfile(_file)
                 job_file_path = _file
     else:
-        pfatal('{} is not a valid ZIP file.' + zip_file_base_path +
-               '_call.zip')
+        reason = '{} is not a valid ZIP file.' + zip_file_base_path + '_call.zip'
+        pfatal(reason)
+
+        return_error(
+            potential_call,
+            reason,
+            client_sid=potential_call.manifest.originator)
         return
 
     if jobs is None:
+        reason = "Call has no job file."
+        pfatal(reason)
+        return_error(
+            potential_call,
+            reason,
+            client_sid=potential_call.manifest.originator,
+            file_list=file_list,
+            zip_file_name=zip_file_base_path)
         return
 
     # Now we have all parts from the jobfile. Let's remember the real client_sid.
@@ -293,13 +330,25 @@ def server_handle_call(potential_call):
 
     # Let's do a final check, if the procedure is offered.
     if possible_job is None or not server_offering_procedure(possible_job):
-        pfatal("Server is not offering this procedure.")
-        # TODO Error handling!
+        reason = "Server is not offering this procedure."
+        pfatal(reason)
+        return_error(
+            potential_call,
+            reason,
+            client_sid=potential_call.manifest.originator,
+            file_list=file_list,
+            zip_file_name=zip_file_base_path)
         return
 
     if not is_capable(possible_job):
-        pfatal("Server is not capable to execute the job.")
-        # TODO Error handling!
+        reason = "Server is not capable to execute the job."
+        pfatal(reason)
+        return_error(
+            potential_call,
+            reason,
+            client_sid=potential_call.manifest.originator,
+            file_list=file_list,
+            zip_file_name=zip_file_base_path)
         return
 
     # Since we are not confident about the job, we sent an ACK and start processing.
@@ -309,16 +358,17 @@ def server_handle_call(potential_call):
             payload="",
             service=RPC,
             recipient=client_sid,
-            custom_manifest={"type": ACK}
-        )
+            custom_manifest={
+                "type": ACK,
+                'originator': potential_call.manifest.originator
+            })
     except DuplicateBundleException as e:
         pass
 
     pinfo('Ack is sent. Will execute procedure.')
 
     # After sending the ACK, start the execution.
-    code, result = server_execute_procedure(possible_job,
-                                            zip_file_base_path + "/")
+    code, result = server_execute_procedure(possible_job, zip_file_base_path + "/")
     result_decoded = result.decode('utf-8')
 
     # Here we need to prepare the job for the next hop.
@@ -348,12 +398,26 @@ def server_handle_call(potential_call):
         if possible_next_job.server == 'any':
             servers = utilities.parse_available_servers(SERVAL.rhizome, SERVER_DEFAULT_SID)
             if not servers:
-                pfatal("Could not find any suitable servers. Aborting.")
+                reason = "Could not find any suitable servers. Aborting."
+                pfatal(reason)
+                return_error(
+                    potential_call,
+                    reason,
+                    client_sid=potential_call.manifest.originator,
+                    file_list=[result_decoded, job_file_path],
+                    zip_file_name=zip_file_base_path)
                 return
 
             servers = utilities.find_available_servers(servers, possible_next_job)
             if not servers:
-                pfatal("Could not find any suitable servers. Aborting.")
+                reason = "Could not find any suitable servers. Aborting."
+                pfatal(reason)
+                return_error(
+                    potential_call,
+                    reason,
+                    client_sid=potential_call.manifest.originator,
+                    file_list=[result_decoded, job_file_path],
+                    zip_file_name=zip_file_base_path)
                 return
 
             possible_next_job.server = utilities.select_server(servers, CONFIGURATION['server']).sid
@@ -374,8 +438,10 @@ def server_handle_call(potential_call):
             payload=payload.read(),
             service=RPC,
             recipient=possible_next_job.server,
-            custom_manifest={"type": CALL}
-        )
+            custom_manifest={
+                "type": CALL,
+                'originator': potential_call.manifest.originator
+            })
 
         id_to_store = next_hop_bundle.bundle_id
         if potential_call.bundle_id in CLEANUP_BUNDLES:
@@ -392,9 +458,8 @@ def server_handle_call(potential_call):
         payload = open(payload_path, 'rb')
 
         custom_manifest = {
-            'recipient': jobs.client_sid,
-            'sender': SERVER_DEFAULT_SID,
-            'type': None
+            'type': None,
+            'originator': potential_call.manifest.originator
         }
 
         # If code is 1, an error occured.
@@ -408,6 +473,7 @@ def server_handle_call(potential_call):
             name=possible_job.procedure,
             payload=payload.read(),
             service=RPC,
+            recipient=jobs.client_sid,
             custom_manifest=custom_manifest)
 
         id_to_store = result_bundle.bundle_id

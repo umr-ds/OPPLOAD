@@ -238,7 +238,7 @@ def parse_available_servers(rhizome, own_sid):
                     x2 = y2 = None
                     with open(CONFIGURATION['location']) as coord_file:
                         x2, y2 = coord_file.readline().split(' ')
-                        _value = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+                        _value = math.sqrt((float(x1) - float(x2))**2 + (float(y1) - float(y2))**2)
 
                 capabilities[_type] = _value
 

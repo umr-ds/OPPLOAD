@@ -82,7 +82,7 @@ def client_call(job_file_path):
         payload=payload.read(),
         service=RPC,
         recipient=first_job.server,
-        custom_manifest={"type": CALL}
+        custom_manifest={"type": CALL, 'originator': client_default_sid}
     )
 
     payload.close()
