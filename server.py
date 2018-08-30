@@ -196,7 +196,7 @@ def server_execute_procedure(job, env_path):
         The return code of the procedure and a string containing the result
     '''
 
-    pdebug('Starting execution of {}'.format(job.procedure))
+    pinfo('Starting execution of {}'.format(job.procedure))
 
     # Path of the executable itself.
     bin_path = utilities.CONFIGURATION['bins'] + '/%s %s'
@@ -445,7 +445,7 @@ def server_handle_call(potential_call):
             name=potential_call.manifest.name,
             payload='',
             service=RPC,
-            recipient=jobs.client_sid,
+            recipient=potential_call.manifest.sender,
             custom_manifest={
                 'type': ACK,
                 'originator': potential_call.manifest.originator
@@ -496,6 +496,7 @@ def server_handle_call(potential_call):
                 SERVAL.rhizome, SERVER_DEFAULT_SID)
             if not servers:
                 reason = 'Could not find any suitable servers. Aborting.'
+                pfatal(reason)
                 return_error(
                     potential_call,
                     reason,
@@ -508,6 +509,7 @@ def server_handle_call(potential_call):
                                                        possible_next_job)
             if not servers:
                 reason = 'Could not find any suitable servers. Aborting.'
+                pfatal(reason)
                 return_error(
                     potential_call,
                     reason,
@@ -676,6 +678,12 @@ def server_listen(queue):
             # destination, so skip.
             if not potential_call.manifest.recipient == SERVER_DEFAULT_SID:
                 continue
+
+            # Yay, ACK received.
+            if potential_call.manifest.type == ACK:
+                pinfo('Received ACK for {} from {}'.format(
+                    potential_call.manifest.name,
+                    potential_call.manifest.sender))
 
             # All checks pass, start the execution (either in background
             # or blocking in a queue)
