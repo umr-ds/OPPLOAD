@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-
 # -*- coding: utf-8 -*-
-'''DTN-RPyC client.
 
-This module contains all functions needed by the DTN-RPyC client, especially
-the call functions.
+'''The main client module, contains everything needed to call a remote
+procedure
 '''
 
 import os
@@ -16,14 +14,22 @@ from pyserval.exceptions import DecryptionError
 from pyserval.client import Client
 
 import utilities
-from utilities import pdebug, pfatal, pinfo
+from utilities import pdebug, pfatal, pinfo, pwarn
 from utilities import CALL, ACK, RESULT, ERROR, CLEANUP, RPC
 from utilities import CONFIGURATION
 from job import Job
 
+
 def client_call(job_file_path):
-    # Create a RESTful serval_client to Serval with the parameters from the config file
-    # and get the Rhizome serval_client.
+    '''Client main call function. Calls a remote procedure found in
+    job_file_path.
+
+    Arguments:
+        job_file_path {str} -- Path to the job file
+    '''
+
+    # Create a RESTful serval_client to Serval with the parameters from
+    # the config file and get the Rhizome serval_client.
     SERVAL = Client(
             host=CONFIGURATION['host'],
             port=int(CONFIGURATION['port']),
@@ -33,74 +39,98 @@ def client_call(job_file_path):
     rhizome = SERVAL.rhizome
     client_default_sid = SERVAL.keyring.default_identity().sid
 
+    # Parse the job file and store all jobs in jobs.
     jobs = utilities.parse_jobfile(job_file_path)
     if not jobs:
-        pfatal("Could not parse the job file!")
+        pfatal('Job file does not contain jobs. Aborting.')
         return
 
+    # This is the first job to be called. We remember it here for
+    # further processing.
     first_job = jobs.joblist[0]
 
-    # If the server address is 'any', we have to find a server, which offers this procedure.
+    # If the server address is 'any', we have to find a server, which
+    # offers this procedure.
     if first_job.server == 'any':
-        servers = utilities.parse_available_servers(rhizome, client_default_sid)
+        pinfo('The address is any, searching for server.')
+        # First, get all available offers from the Rhizome store.
+        servers = utilities.parse_available_servers(rhizome,
+                                                    client_default_sid)
         if not servers:
-            pfatal("Could not find any suitable servers. Aborting.")
+            pfatal('Could not find any servers for the job. Aborting.')
             return
 
+        # Secondly, get servers offering the desired procedure.
         servers = utilities.find_available_servers(servers, first_job)
         if not servers:
-            pfatal("Could not find any suitable servers. Aborting.")
+            pfatal('Could not find any servers for the job. Aborting.')
             return
 
-        first_job.server = utilities.select_server(servers, CONFIGURATION['server']).sid
+        # If we have a list of potential servers, get the server based on
+        # the selection algorithm as in the configure script.
+        first_job.server = utilities.select_server(servers,
+                                                   CONFIGURATION['server']).sid
 
-        pdebug(first_job.server)
+        # Now everything is done. Set the SID to the job file and continue
+        # with processing.
+        utilities.replace_any_to_sid(job_file_path, first_job.line,
+                                     first_job.server)
 
-        utilities.replace_any_to_sid(job_file_path, first_job.line, first_job.server)
+        pinfo('Using server {} for the fist job.'.format(first_job.server))
 
-    # set the payload to file
+    # All involved files in a call should be uniquely named.
+    # Thus, we use the procedure name, the server SID and a timestamp.
+    zip_file_base_path = '{}_{}_{}'.format(first_job.procedure,
+                                           first_job.server,
+                                           str(math.floor(time.time())))
+
+    # Iterate through all arguments and check if it is file.
+    # If so, add it to the file list to be ZIP'd.
     zip_list = []
-    zip_file_base_path = "{}_{}_{}".format(
-        first_job.procedure, first_job.server, str(math.floor(time.time())))
-
     for arg in first_job.arguments:
         if not os.path.isfile(arg):
             continue
         zip_list.append(arg)
-
-    # create zipfile
+    # Of course, we have to add the job file to the file list.
+    # For sanity reasons we also strip away all whitespace characters.
     zip_list.append(job_file_path)
     zip_list = list(map(str.strip, zip_list))
 
-    zip_file = utilities.make_zip(zip_list, zip_file_base_path + "_call")
+    # Now we can crate the ZIP file...
+    zip_file = utilities.make_zip(zip_list, zip_file_base_path + '_call')
+    pinfo('Prepared ZIP file for call.')
 
+    # ... open it ...
     payload = open(zip_file, 'rb')
-
-    # create new bundle with default identity
+    # ... and create a new Rhizome bundle containing all relevant information
+    # for the call.
     call_bundle = rhizome.new_bundle(
         name=first_job.procedure,
         payload=payload.read(),
         service=RPC,
         recipient=first_job.server,
-        custom_manifest={"type": CALL, 'originator': client_default_sid}
+        custom_manifest={'type': CALL, 'originator': client_default_sid}
     )
-
     payload.close()
+    pinfo('Procedure is called. Waiting for the result.')
 
+    # Now we wait for the result.
     token = call_bundle.bundle_id
     result_received = False
-
     while not result_received:
         bundles = rhizome.get_bundlelist()
 
         for bundle in bundles:
-
+            # Cool, we are done.
             if result_received:
                 break
 
+            # We hit the virtual bottom of the bundle list, so we need
+            # to poll the recent bundles.
             if bundle.bundle_id == token:
                 break
 
+            # Don't bother, if it is not a RPC bundle.
             if not bundle.manifest.service == RPC:
                 continue
 
@@ -111,48 +141,56 @@ def client_call(job_file_path):
             except DecryptionError:
                 continue
 
+            # Although it is a RPC bundle for this client, it is not
+            # the right result for the procedure.
             if not potential_result.manifest.name == first_job.procedure:
                 continue
 
-            # At this point, we know that there is a RPC file in the store
-            # and it is for us. Start parsing.
+            # Yay, ACK received.
             if potential_result.manifest.type == ACK:
-                pinfo('Received ACK. Will wait for result.')
+                pinfo('Received ACK for {} from {}'.format(
+                    potential_result.manifest.name,
+                    potential_result.manifest.sender))
 
-
+            # Here we have the result.
             if potential_result.manifest.type == RESULT:
-                # It is possible, that the result is a file.
-                # Therefore, we have to check the result field in the bundle.
-                # If it is a file, download it and return the path to the
-                # downloaded file.
-                # Otherwise, just return the result.
+                pinfo('Received result, preparing download.')
+                # Use the same filename as for the call, except
+                # we append result instead of call to the name.
                 result_path = zip_file_base_path + '_result.zip'
 
+                # Download the payload from the Rhizome store and
+                # write it to the mentioned ZIP file
                 with open(result_path, 'wb') as zip_file:
                     zip_file.write(potential_result.payload)
+                pinfo('Download is done. Cleaning up store.')
 
-                # The final step is to clean up the store.
-                # Therefore, we create a new bundle with an
-                # empty payload and CLEANUP as the type.
-                # Since the BID is the same as in the call,
-                # the call bundle will be updated with an empty file.
-                # This type will instruct the server to clean up
-                # the files involved during this RPC.
+                # The final step is to cleanup the store by updating
+                # the call bundle by setting the CLEANUP flag to the
+                # bundle and removing the payload.
                 call_bundle.refresh()
                 call_bundle.manifest.type = CLEANUP
-                call_bundle.payload = ""
+                call_bundle.payload = ''
                 call_bundle.update()
-
-                pinfo('Received result: %s' % result_path)
                 result_received = True
 
+                pinfo('Received result: {}'.format(result_path))
+                break
+
+            # One of the servers had an error, so see what is going on.
             if potential_result.manifest.type == ERROR:
-                pfatal(
-                    'Received error response with the following message: %s' \
-                    % potential_result.manifest.result
-                )
-
+                call_bundle.refresh()
+                call_bundle.manifest.type = CLEANUP
+                call_bundle.payload = ''
+                call_bundle.update()
                 result_received = True
+                pwarn('Received error \'{}\' from {} for call {}'.format(
+                    potential_result.manifest.reason,
+                    potential_result.manifest.sender,
+                    potential_result.manifest.name))
+                pwarn('See {} for more information'.format(result_path))
+                break
 
+        # After the for loop, remember the recent bundle id.
         token = bundles[0].bundle_id
         time.sleep(1)
