@@ -224,16 +224,20 @@ def select_server(server_list, selection_type=FIRST):
         return
 
 
-def config_files_present():
+def config_files_present(server=True):
     '''Check, if all files from conf are present.
 
     Returns:
         True, if all files are available, False otherwise
     '''
-    # TODO: Check for all files in config
-    if not os.path.exists(CONFIGURATION['bins']):
-        return False
-    if not os.path.exists(CONFIGURATION['rpcs']):
+    if server:
+        if not os.path.exists(CONFIGURATION['bins']):
+            return False
+        if not os.path.exists(CONFIGURATION['rpcs']):
+            return False
+        if not os.path.exists(CONFIGURATION['capabilites']):
+            return False
+    if not os.path.exists(CONFIGURATION['location']):
         return False
     return True
 
@@ -252,12 +256,19 @@ def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
     '''
 
     if not read_config(config_path):
+        pfatal('Config file is not available.')
         sys.exit(1)
     if not serval_running():
+        pfatal('Serval is not running.')
         sys.exit(1)
-    if server_checks and not config_files_present():
+    if server_checks and not config_files_present(server=True):
+        pfatal('Can not find config files.')
+        sys.exit(1)
+    if not config_files_present(server=False):
+        pfatal('Can not find config files.')
         sys.exit(1)
     if client_jobfle and not os.path.exists(client_jobfle):
+        pfatal('Can not find job file.')
         sys.exit(1)
 
 
