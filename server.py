@@ -383,6 +383,7 @@ def server_handle_call(potential_call):
         return_error(
             potential_call,
             reason,
+            file_list=[zip_file_base_path + '_call.zip'],
             client_sid=potential_call.manifest.originator)
         return
 
@@ -501,7 +502,7 @@ def server_handle_call(potential_call):
                     potential_call,
                     reason,
                     client_sid=potential_call.manifest.originator,
-                    file_list=[result_decoded, job_file_path],
+                    file_list=file_list,
                     zip_file_name=zip_file_base_path)
                 return
 
@@ -514,7 +515,7 @@ def server_handle_call(potential_call):
                     potential_call,
                     reason,
                     client_sid=potential_call.manifest.originator,
-                    file_list=[result_decoded, job_file_path],
+                    file_list=file_list,
                     zip_file_name=zip_file_base_path)
                 return
 
@@ -529,7 +530,7 @@ def server_handle_call(potential_call):
         # Done. Make the payload containing all required files, read the
         # payload ...
         payload_path = utilities.make_zip(
-            [result_decoded, job_file_path],
+            file_list,
             name=zip_file_base_path + '_result',
             subpath_to_remove=zip_file_base_path + '/')
         payload = open(payload_path, 'rb')
@@ -557,7 +558,7 @@ def server_handle_call(potential_call):
         # There is no next hop, return the result to the client by
         # building and reading the payload...
         payload_path = utilities.make_zip(
-            [result_decoded, job_file_path],
+            file_list,
             name=zip_file_base_path + '_result',
             subpath_to_remove=zip_file_base_path + '/')
         payload = open(payload_path, 'rb')
