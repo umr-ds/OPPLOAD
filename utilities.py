@@ -69,6 +69,7 @@ def pdebug(string_to_print):
     '''
 
     print(DEBUG + str(string_to_print) + RESET)
+    sys.stdout.flush()
 
 
 def pfatal(string_to_print):
@@ -79,6 +80,7 @@ def pfatal(string_to_print):
     '''
 
     print(FATAL + str(string_to_print) + RESET)
+    sys.stdout.flush()
 
 
 def pinfo(string_to_print):
@@ -89,6 +91,7 @@ def pinfo(string_to_print):
     '''
 
     print(INFO + str(string_to_print) + RESET)
+    sys.stdout.flush()
 
 
 def pwarn(string_to_print):
@@ -99,6 +102,7 @@ def pwarn(string_to_print):
     '''
 
     print(WARN + str(string_to_print) + RESET)
+    sys.stdout.flush()
 
 
 class Server():
