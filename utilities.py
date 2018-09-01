@@ -12,6 +12,7 @@ import zipfile
 import errno
 import random
 import math
+import time
 
 import requests
 from numpy.random import gamma
@@ -42,12 +43,22 @@ CONFIGURATION = {}
 # This are the available capabilities.
 filter_keywords = ['gps_coord', 'cpu_load', 'memory', 'disk_space']
 
+
+def log_time():
+    '''Simple function for getting the current time in seconds
+
+    Returns:
+        Unix time in seconds as string
+    '''
+
+    return str(time.time())
+
 # ANSI color codes.
 RESET = '\033[0m'
-FATAL = '\033[1m\033[31mFATAL: \033[0m\033[31m'  # Red
-INFO = '\033[1m\033[32mINFO: \033[0m\033[32m'    # Green
-WARN = '\033[1m\033[33mWARN: \033[0m\033[33m'    # Yellow
-DEBUG = '\033[1m\033[34mDEBUG: \033[0m\033[34m'  # Blue
+FATAL = '\033[1m\033[31m[' + log_time() + ']FATAL: \033[0m\033[31m'  # Red
+INFO = '\033[1m\033[32m[' + log_time() + ']INFO: \033[0m\033[32m'  # Green
+WARN = '\033[1m\033[33m[' + log_time() + ']WARN: \033[0m\033[33m'  # Yellow
+DEBUG = '\033[1m\033[34mD[' + log_time() + ']EBUG: \033[0m\033[34m'  # Blue
 
 
 def pdebug(string_to_print):
