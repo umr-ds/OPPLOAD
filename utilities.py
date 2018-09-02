@@ -58,7 +58,7 @@ RESET = '\033[0m'
 FATAL = '\033[1m\033[31m[' + log_time() + ']FATAL: \033[0m\033[31m'  # Red
 INFO = '\033[1m\033[32m[' + log_time() + ']INFO: \033[0m\033[32m'  # Green
 WARN = '\033[1m\033[33m[' + log_time() + ']WARN: \033[0m\033[33m'  # Yellow
-DEBUG = '\033[1m\033[34mD[' + log_time() + ']EBUG: \033[0m\033[34m'  # Blue
+DEBUG = '\033[1m\033[34m[' + log_time() + ']DEBUG: \033[0m\033[34m'  # Blue
 
 
 def pdebug(string_to_print):
