@@ -10,12 +10,11 @@ import sys
 import string
 import zipfile
 import errno
-import random
 import math
 import time
 
 import requests
-from numpy.random import gamma
+from numpy import random
 from pyserval.client import Client
 
 from job import Jobfile, Job
@@ -36,6 +35,9 @@ FIRST = 'first'
 RANDOM = 'random'
 BEST = 'best'
 PROB = 'probabilistic'
+
+# create predictable random numbers (for server selection)
+random.seed(0)
 
 # Hold the configuration read from config file.
 CONFIGURATION = {}
@@ -209,7 +211,7 @@ def select_probabilistic_server(server_list):
     '''
 
     sorted_server_list = sort_servers(server_list)
-    index = round(gamma(2.0))
+    index = round(random.gamma(2.0))
     try:
         return sorted_server_list[index]
     except IndexError:
