@@ -137,7 +137,8 @@ def get_capabilities(rpc_caps, location):
             count = count + 1
 
     with open(location, 'r') as location_file:
-        capabilities.add(location_file.readline())
+        coords = location_file.readline().split(' ')
+        capabilities.add('gps_coord={},{}\n'.format(coords[0], coords[1]))
         count = count + 1
 
     return (count, capabilities)

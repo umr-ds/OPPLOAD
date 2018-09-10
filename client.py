@@ -53,17 +53,27 @@ def client_call(job_file_path):
     # offers this procedure.
     if first_job.server == 'any':
         pinfo('The address is any, searching for server.')
-        # First, get all available offers from the Rhizome store.
-        servers = utilities.parse_available_servers(rhizome,
-                                                    client_default_sid)
-        if not servers:
-            pfatal('Could not find any servers for the job. Aborting.')
-            return
 
-        # Secondly, get servers offering the desired procedure.
-        servers = utilities.find_available_servers(servers, first_job)
+        for i in range(10):
+            # First, get all available offers from the Rhizome store.
+            servers = utilities.parse_available_servers(rhizome,
+                                                        client_default_sid)
+            if not servers:
+                pwarn('Could not find any servers for the job in try {}/10'.format(i))
+                time.sleep(1)
+                continue
+
+            # Secondly, get servers offering the desired procedure.
+            servers = utilities.find_available_servers(servers, first_job)
+            if not servers:
+                pwarn('Could not find any capable servers for the job in try {}/10'.format(i))
+                time.sleep(1)
+                continue
+
+            break
+
         if not servers:
-            pfatal('Could not find any servers for the job. Aborting.')
+            pfatal('Could not find any servers for the job')
             return
 
         # If we have a list of potential servers, get the server based on

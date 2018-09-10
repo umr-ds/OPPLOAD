@@ -131,9 +131,9 @@ class Server():
 
         self.sid = sid
         self.gps_coord = gps_coord
-        self.cpu_load = cpu_load
-        self.memory = memory
-        self.disk_space = disk_space
+        self.cpu_load = float(cpu_load)
+        self.memory = float(memory)
+        self.disk_space = float(disk_space)
         self.jobs = jobs
 
 
@@ -236,7 +236,10 @@ def select_server(server_list, selection_type=FIRST):
         return select_random_server(server_list)
 
     if selection_type == BEST:
-        return
+        return select_best_server(server_list)
+
+    if selection_type == PROB:
+        return select_probabilistic_server(server_list)
 
 
 def config_files_present(server=True):
