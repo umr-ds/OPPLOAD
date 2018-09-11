@@ -133,9 +133,9 @@ class Server():
 
         self.sid = sid
         self.gps_coord = gps_coord
-        self.cpu_load = float(cpu_load)
-        self.memory = float(memory)
-        self.disk_space = float(disk_space)
+        self.cpu_load = float(cpu_load) if cpu_load else None
+        self.memory = float(memory) if memory else None
+        self.disk_space = float(disk_space) if disk_space else None
         self.jobs = jobs
 
 
