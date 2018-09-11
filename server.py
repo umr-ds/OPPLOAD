@@ -495,7 +495,8 @@ def server_handle_call(potential_call):
         if possible_next_job.server == 'any':
             pinfo('Searching next server.')
             servers = utilities.parse_available_servers(
-                SERVAL.rhizome, SERVER_DEFAULT_SID)
+                SERVAL.rhizome, SERVER_DEFAULT_SID,
+                potential_call.manifest.originator)
             if not servers:
                 reason = 'Could not find any suitable servers. Aborting.'
                 pfatal(reason)

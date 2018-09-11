@@ -385,16 +385,17 @@ def insert_to_line(line, appendix):
     return ret_line
 
 
-def parse_available_servers(rhizome, own_sid):
+def parse_available_servers(rhizome, own_sid, originator_sid=None):
     '''This function iterates through all RPC offers and parses them
     into servers
 
     Arguments:
         rhizome -- Pyserval Rhizome connection
         own_sid -- SID of the caller of this function
+        originator_sid -- SID of the originator a particular call.
 
     Returns:
-        A list containing all found servers
+        A list containing all found servers excluding self and originator
     '''
 
     # Get all bundles and check if any available. If not, just return.
@@ -410,6 +411,10 @@ def parse_available_servers(rhizome, own_sid):
 
         # Make sure, that we can not call ourself.
         if bundle.manifest.sender == own_sid:
+            continue
+
+        # Do not call a procedure on the node which wants it to be offloaded...
+        if bundle.manifest.sender == originator_sid:
             continue
 
         jobs = []
