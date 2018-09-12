@@ -36,8 +36,12 @@ RANDOM = 'random'
 BEST = 'best'
 PROB = 'probabilistic'
 
-# create predictable random numbers (for server selection)
-random.seed(0)
+def seed(random_file_path="random.seed"):
+    # create predictable random numbers (for server selection)
+    with open(random_file_path, "r") as random_file:
+        seed = random_file.read()
+        pinfo("Successfully read seed from {}.".format(random_file_path))
+    random.seed(seed if seed else 0)
 
 # Hold the configuration read from config file.
 CONFIGURATION = {}
