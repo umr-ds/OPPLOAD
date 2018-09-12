@@ -21,11 +21,11 @@ from pyserval.client import Client
 from job import Jobfile, Job
 
 # Type definitions for RPC bundle types.
-CALL = 0
-ACK = 1
-RESULT = 2
-ERROR = 3
-CLEANUP = 4
+CALL = 'call'
+ACK = 'ack'
+RESULT = 'result'
+ERROR = 'error'
+CLEANUP = 'cleanup'
 
 # Rhizome service definitions
 OFFER = 'RPCOFFER'
