@@ -40,13 +40,13 @@ def client_call(job_file_path):
     rhizome = SERVAL.rhizome
     client_default_sid = SERVAL.keyring.default_identity().sid
 
-    LOGGER.info('Client SID: {}, job file: {}'.format(client_default_sid,
+    LOGGER.info(' | Client SID: {}, job file: {}'.format(client_default_sid,
                                                 job_file_path))
 
     # Parse the job file and store all jobs in jobs.
     jobs = utilities.parse_jobfile(job_file_path)
     if not jobs:
-        LOGGER.critical('Job file {} does not contain jobs. Aborting.'.format(
+        LOGGER.critical(' | Job file {} does not contain jobs. Aborting.'.format(
             job_file_path))
         return
 
@@ -61,13 +61,13 @@ def client_call(job_file_path):
 
     job_id = hashlib.sha256(encoded_hash_base_string).hexdigest()[:8]
 
-    LOGGER.info('({}) Job file parsed. First Job is {} with ID {}.'.format(
+    LOGGER.info('{} | Job file parsed. First Job is {} with ID {}.'.format(
         job_id, first_job.procedure, job_id))
 
     # If the server address is 'any', we have to find a server, which
     # offers this procedure.
     if first_job.server == 'any':
-        LOGGER.info('({}) The address is any, searching for server.'.format(job_id))
+        LOGGER.info('{} | The address is any, searching for server.'.format(job_id))
 
         for i in range(10):
             # First, get all available offers from the Rhizome store.
@@ -75,19 +75,19 @@ def client_call(job_file_path):
                                                         client_default_sid)
             if not servers:
                 LOGGER.warn(
-                    '({}) Could not find any servers for the job in try {}/10'.
-                    format(job_id, i))
+                    '{} | Could not find any servers for the job in try {}/10'.
+                    format(job_id, i)) 
                 time.sleep(1)
                 continue
 
-            LOGGER.info('({}) Found {} offers. Searching possible server.'.format(
+            LOGGER.info('{} | Found {} offers. Searching possible server.'.format(
                 job_id, len(servers)))
 
             # Secondly, get servers offering the desired procedure.
             servers = utilities.find_available_servers(servers, first_job)
             if not servers:
                 LOGGER.warn(
-                    '({}) Could not find any capable servers for the job in try {}/10'.
+                    '{} | Could not find any capable servers for the job in try {}/10'.
                     format(job_id, i))
                 time.sleep(1)
                 continue
@@ -96,10 +96,10 @@ def client_call(job_file_path):
 
         if not servers:
             LOGGER.critical(
-                '({}) Could not find any servers for the job'.format(job_id))
+                '{} | Could not find any servers for the job'.format(job_id))
             return
 
-        LOGGER.info('({}) Found {} servers. Getting server based on {} algorithm.'.
+        LOGGER.info('{} | Found {} servers. Getting server based on {} algorithm.'.
               format(job_id, len(servers), CONFIGURATION['server']))
 
         # If we have a list of potential servers, get the server based on
@@ -112,7 +112,7 @@ def client_call(job_file_path):
         utilities.replace_any_to_sid(job_file_path, first_job.line,
                                      first_job.server)
 
-        LOGGER.info('({}) Using server {} for the fist job.'.format(
+        LOGGER.info('{} | Using server {} for the fist job.'.format(
             job_id, first_job.server))
 
     # All involved files in a call should be uniquely named.
@@ -135,7 +135,7 @@ def client_call(job_file_path):
     # Now we can crate the ZIP file...
     zip_file = utilities.make_zip(zip_list, zip_file_base_path + '_call')
 
-    LOGGER.info('({}) Prepared ZIP file {} for call.'.format(
+    LOGGER.info('{} | Prepared ZIP file {} for call.'.format(
         job_id, zip_file_base_path + '_call'))
 
     # ... open it ...
@@ -153,7 +153,7 @@ def client_call(job_file_path):
             'rpcid': job_id
         })
     payload.close()
-    LOGGER.info('({}) Procedure {} is called: bid is {}'.format(
+    LOGGER.info('{} | Procedure {} is called: bid is {}'.format(
         job_id, first_job.procedure, call_bundle.bundle_id))
 
     # Now we wait for the result.
@@ -191,14 +191,14 @@ def client_call(job_file_path):
 
             # Yay, ACK received.
             if potential_result.manifest.type == ACK and potential_result.manifest.rpcid == job_id:
-                LOGGER.info('({}) Received ACK from {}'.format(
+                LOGGER.info('{} | Received ACK from {}'.format(
                     potential_result.manifest.rpcid,
                     potential_result.manifest.sender))
 
             # Here we have the result.
             if potential_result.manifest.type == RESULT and potential_result.manifest.rpcid == job_id:
                 LOGGER.info(
-                    '({}) Received result, preparing download.'.format(
+                    '{} | Received result, preparing download.'.format(
                         potential_result.manifest.rpcid))
                 # Use the same filename as for the call, except
                 # we append result instead of call to the name.
@@ -209,7 +209,7 @@ def client_call(job_file_path):
                 with open(result_path, 'wb') as zip_file:
                     zip_file.write(potential_result.payload)
                 LOGGER.info(
-                    '({}) Download is done. Cleaning up store.'.format(job_id))
+                    '{} | Download is done. Cleaning up store.'.format(job_id))
 
                 # The final step is to cleanup the store by updating
                 # the call bundle by setting the CLEANUP flag to the
@@ -220,7 +220,7 @@ def client_call(job_file_path):
                 call_bundle.update()
                 result_received = True
 
-                LOGGER.info('({}) Received result: {}'.format(job_id, result_path))
+                LOGGER.info('{} | Received result: {}'.format(job_id, result_path))
                 break
 
             # One of the servers had an error, so see what is going on.
@@ -231,7 +231,7 @@ def client_call(job_file_path):
                 call_bundle.update()
                 result_received = True
                 LOGGER.warn(
-                    '({}) Received error \'{}\' from {} for call {}. See {} for more information'.
+                    '{} | Received error \'{}\' from {} for call {}. See {} for more information'.
                     format(job_id,
                            potential_result.manifest.reason,
                            potential_result.manifest.sender,

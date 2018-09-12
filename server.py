@@ -373,7 +373,7 @@ def server_handle_call(potential_call):
     else:
         # We have not found a valid ZIP file, so abort here and inform
         # the client.
-        reason = '{} is not a valid ZIP file.'.format(zip_file_base_path)
+        reason = ' | {} is not a valid ZIP file.'.format(zip_file_base_path)
         LOGGER.critical(reason)
         return_error(
             potential_call,
@@ -384,7 +384,7 @@ def server_handle_call(potential_call):
 
     # We could not find any jobs in the ZIP, so abort and inform the client.
     if jobs is None:
-        reason = 'Call has no job file.'
+        reason = ' | Call has no job file.'
         LOGGER.critical(reason)
         return_error(
             potential_call,
@@ -410,7 +410,7 @@ def server_handle_call(potential_call):
             break
 
     # Do a check, if the procedure is offered and inform the client if not.
-    LOGGER.info('({}) Checking if offering {}'.format(job_id, job.procedure))
+    LOGGER.info('{} | Checking if offering {}'.format(job_id, job.procedure))
     if possible_job is None or not server_offering_procedure(possible_job):
         reason = 'Server is not offering this procedure.'
         LOGGER.critical(reason)
@@ -424,7 +424,7 @@ def server_handle_call(potential_call):
 
     # Check, if the server is capable to execute the procedure and inform
     # the client if not.
-    LOGGER.info('({}) Checking if capable to execute {}'.format(
+    LOGGER.info('{} | Checking if capable to execute {}'.format(
         job_id, job.procedure))
     if not is_capable(possible_job):
         reason = 'Server is not capable to execute the job.'
@@ -454,14 +454,14 @@ def server_handle_call(potential_call):
         pass
 
     # After sending the ACK, execute the procedure and store the result.
-    LOGGER.info('({}) Starting execution of {}'.format(job_id, job.procedure))
+    LOGGER.info('{} | Starting execution of {}'.format(job_id, job.procedure))
     code, result = server_execute_procedure(possible_job,
                                             zip_file_base_path + '/')
     result_decoded = result.decode('utf-8')
 
     # Here we need to prepare the job for the next hop.
     if possible_next_job is not None:
-        LOGGER.info('({}) Preparing job {} for next hop.'.format(
+        LOGGER.info('{} | Preparing job {} for next hop.'.format(
             job_id, job.procedure))
         # After executing the job, we have to update the job_file.
         # Therefore, we first read it.
@@ -493,7 +493,7 @@ def server_handle_call(potential_call):
         # If the next server is again any, we search a new one for the next
         # job. This is about the same process as in the client.
         if possible_next_job.server == 'any':
-            LOGGER.info('({}) Searching next server.'.format(job_id))
+            LOGGER.info('{} | Searching next server.'.format(job_id))
             servers = utilities.parse_available_servers(
                 SERVAL.rhizome, SERVER_DEFAULT_SID,
                 potential_call.manifest.originator)
@@ -512,7 +512,7 @@ def server_handle_call(potential_call):
                                                        possible_next_job)
             if not servers:
                 reason = 'Could not find any suitable servers. Aborting.'
-                LOGGER.critical(reason)
+                LOGGER.critical(" | " + reason)
                 return_error(
                     potential_call,
                     reason,
@@ -527,7 +527,7 @@ def server_handle_call(potential_call):
             utilities.replace_any_to_sid(job_file_path, possible_next_job.line,
                                          possible_next_job.server)
 
-            LOGGER.info('({}) Found server {}'.format(job_id,
+            LOGGER.info('{} | Found server {}'.format(job_id,
                                                 possible_next_job.server))
 
         # Done. Make the payload containing all required files, read the
@@ -558,7 +558,7 @@ def server_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
     else:
-        LOGGER.info('({}) Preparing result from {}.'.format(job_id, job.procedure))
+        LOGGER.info('{} | Preparing result from {}.'.format(job_id, job.procedure))
         # There is no next hop, return the result to the client by
         # building and reading the payload...
         payload_path = utilities.make_zip(
@@ -634,7 +634,7 @@ def server_listen(queue):
         or not
     '''
 
-    LOGGER.info('Starting server')
+    LOGGER.info(' | Starting server')
 
     global SERVER_DEFAULT_SID
     global SERVAL
@@ -652,7 +652,7 @@ def server_listen(queue):
 
     # At this point we can publish all offered procedures and capabilities.
     # The publish function is executed once at startup and then periodically.
-    LOGGER.info('Publishing procedures and capabilities.')
+    LOGGER.info(' | Publishing procedures and capabilities.')
     server_publish_procedures()
 
     all_bundles = rhizome.get_bundlelist()
@@ -685,7 +685,7 @@ def server_listen(queue):
 
             # Yay, ACK received.
             if potential_call.manifest.type == ACK:
-                LOGGER.info('({}) Received ACK for {} from {}'.format(
+                LOGGER.info('{} | Received ACK for {} from {}'.format(
                     potential_call.manifest.rpcid,
                     potential_call.manifest.name,
                     potential_call.manifest.sender))
@@ -693,7 +693,7 @@ def server_listen(queue):
             # All checks pass, start the execution (either in background
             # or blocking in a queue)
             if potential_call.manifest.type == CALL:
-                LOGGER.info('({}) Received call. Starting handling.'.format(
+                LOGGER.info('{} | Received call. Starting handling.'.format(
                     potential_call.manifest.rpcid))
                 if queue:
                     server_handle_call(potential_call)
@@ -702,7 +702,7 @@ def server_listen(queue):
 
             # If the bundle is a cleanup file, we start the cleanup routine.
             elif potential_call.manifest.type == CLEANUP:
-                LOGGER.info('({}) Cleaning up store for bundle {}'.format(
+                LOGGER.info('{} | Cleaning up store for bundle {}'.format(
                     potential_call.manifest.rpcid, bundle.bundle_id))
                 server_cleanup_store(potential_call)
 

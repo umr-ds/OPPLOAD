@@ -49,7 +49,7 @@ LOGGER.setLevel(logging.DEBUG)
 def add_logfile(file_path, level=logging.DEBUG):
     log_handler = logging.FileHandler(file_path)
     log_handler.setLevel(level)
-    log_handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
+    log_handler.setFormatter(logging.Formatter('%(asctime)-23s | %(name)-6s | %(levelname)-8s | %(message)s'))
     LOGGER.addHandler(log_handler)
 
 def seed(random_file_path="random.seed"):
@@ -57,10 +57,10 @@ def seed(random_file_path="random.seed"):
     try:
         with open(random_file_path, "r") as random_file:
             seed = random_file.read()
-            LOGGER.info("Successfully read seed from {}.".format(random_file_path))
+            LOGGER.info(" | Successfully read seed from {}.".format(random_file_path))
         random.seed(int(seed))
     except Exception:
-        LOGGER.info("Couldn't read seed from {}, using default.".format(random_file_path))
+        LOGGER.info(" | Couldn't read seed from {}, using default.".format(random_file_path))
         random.seed(0)
 
 class Server():
@@ -208,19 +208,19 @@ def config_files_present(server=True):
     '''
     if server:
         if not os.path.exists(CONFIGURATION['bins']):
-            LOGGER.critical('RPC binaries paht {} does not exist.'.format(
+            LOGGER.critical(' | RPC binaries paht {} does not exist.'.format(
                 CONFIGURATION['bins']))
             return False
         if not os.path.exists(CONFIGURATION['rpcs']):
-            LOGGER.critical('RPC definition file {} does not exist.'.format(
+            LOGGER.critical(' | RPC definition file {} does not exist.'.format(
                 CONFIGURATION['rpcs']))
             return False
         if not os.path.exists(CONFIGURATION['capabilites']):
-            LOGGER.critical('Capabilities file {} does not exist.'.format(
+            LOGGER.critical(' | Capabilities file {} does not exist.'.format(
                 CONFIGURATION['capabilites']))
             return False
     if not os.path.exists(CONFIGURATION['location']):
-        LOGGER.critical('Location file {} does not exist.'.format(
+        LOGGER.critical(' | Location file {} does not exist.'.format(
             CONFIGURATION['location']))
         return False
     return True
@@ -248,7 +248,7 @@ def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
     if not config_files_present(server=False):
         sys.exit(1)
     if client_jobfle and not os.path.exists(client_jobfle):
-        LOGGER.critical('Can not find job file.')
+        LOGGER.critical(' | Can not find job file.')
         sys.exit(1)
 
 
@@ -270,7 +270,7 @@ def read_config(path):
         return True
 
     except FileNotFoundError:
-        LOGGER.critical('Main config file {} is not available.'.format(path))
+        LOGGER.critical(' | Main config file {} is not available.'.format(path))
         return False
 
 
@@ -515,7 +515,7 @@ def serval_running():
             passwd=CONFIGURATION['passwd']
         ).keyring.get_identities()
     except requests.exceptions.ConnectionError:
-        LOGGER.critical('Serval is not running. Start with \'servald start\'')
+        LOGGER.critical(' | Serval is not running. Start with \'servald start\'')
         return False
     return True
 

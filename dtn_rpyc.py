@@ -94,7 +94,7 @@ def signal_handler(_, __):
         __ -- Not used.
     '''
 
-    utilities.LOGGER.info('Stopping DTN-RPyC.')
+    utilities.LOGGER.info(' | Stopping DTN-RPyC.')
     sys.exit(0)
 
 if __name__ == '__main__':
