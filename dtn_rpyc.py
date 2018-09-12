@@ -97,6 +97,7 @@ def signal_handler(_, __):
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
     try:
+        utilities.seed()
         DTNRPyC()
     except (KeyboardInterrupt, SystemExit):
         raise
