@@ -41,7 +41,7 @@ def seed(random_file_path="random.seed"):
     with open(random_file_path, "r") as random_file:
         seed = random_file.read()
         pinfo("Successfully read seed from {}.".format(random_file_path))
-    random.seed(seed if seed else 0)
+    random.seed(int(seed) if seed else 0)
 
 # Hold the configuration read from config file.
 CONFIGURATION = {}
