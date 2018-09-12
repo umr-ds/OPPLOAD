@@ -76,7 +76,7 @@ def client_call(job_file_path):
             if not servers:
                 LOGGER.warn(
                     '{} | Could not find any servers for the job in try {}/10'.
-                    format(job_id, i)) 
+                    format(job_id, i))
                 time.sleep(1)
                 continue
 
@@ -135,8 +135,7 @@ def client_call(job_file_path):
     # Now we can crate the ZIP file...
     zip_file = utilities.make_zip(zip_list, zip_file_base_path + '_call')
 
-    LOGGER.info('{} | Prepared ZIP file {} for call.'.format(
-        job_id, zip_file_base_path + '_call'))
+    LOGGER.info('{} | Prepared ZIP file {} for call.'.format(job_id, zip_file))
 
     # ... open it ...
     payload = open(zip_file, 'rb')

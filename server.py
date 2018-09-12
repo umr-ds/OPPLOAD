@@ -527,8 +527,8 @@ def server_handle_call(potential_call):
             utilities.replace_any_to_sid(job_file_path, possible_next_job.line,
                                          possible_next_job.server)
 
-            LOGGER.info('{} | Found server {}'.format(job_id,
-                                                possible_next_job.server))
+            LOGGER.info('{} | Found server {}'.format(
+                job_id, possible_next_job.server))
 
         # Done. Make the payload containing all required files, read the
         # payload ...
@@ -558,7 +558,8 @@ def server_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
     else:
-        LOGGER.info('{} | Preparing result from {}.'.format(job_id, job.procedure))
+        LOGGER.info('{} | Preparing result from {}.'.format(
+            job_id, job.procedure))
         # There is no next hop, return the result to the client by
         # building and reading the payload...
         payload_path = utilities.make_zip(
@@ -671,16 +672,22 @@ def server_listen(queue):
             if not bundle.manifest.service == RPC:
                 continue
 
+            # We could download the bundle, but it seems that we are not the
+            # destination, so skip.
+            if not bundle.manifest.recipient == SERVER_DEFAULT_SID:
+                LOGGER.debug(
+                    " | Received RPC bundle for other client, skipping. (bid:{})"
+                    .format(bundle.manifest.id))
+                continue
+
             # At this point, we have an call and have to start handling it.
             # Therefore, we download the manifest.
             try:
                 potential_call = rhizome.get_bundle(bundle.bundle_id)
             except DecryptionError:
-                continue
-
-            # We could download the bundle, but it seems that we are not the
-            # destination, so skip.
-            if not potential_call.manifest.recipient == SERVER_DEFAULT_SID:
+                LOGGER.error(
+                    " | Error decrypting received RPC bundle, skipping. (bid:{})"
+                    .format(bundle.manifest.id))
                 continue
 
             # Yay, ACK received.
@@ -692,7 +699,7 @@ def server_listen(queue):
 
             # All checks pass, start the execution (either in background
             # or blocking in a queue)
-            if potential_call.manifest.type == CALL:
+            elif potential_call.manifest.type == CALL:
                 LOGGER.info('{} | Received call. Starting handling.'.format(
                     potential_call.manifest.rpcid))
                 if queue:
@@ -705,6 +712,12 @@ def server_listen(queue):
                 LOGGER.info('{} | Cleaning up store for bundle {}'.format(
                     potential_call.manifest.rpcid, bundle.bundle_id))
                 server_cleanup_store(potential_call)
+
+            else:
+                LOGGER.error(
+                    "{} | Received RPC bundle of unknown type ({}), skipping.".
+                    format(potential_call.manifest.rpcid,
+                           potential_call.manifest.type))
 
         # After the for loop, remember the recent bundle id.
         token = bundles[0].bundle_id
