@@ -7,7 +7,7 @@
 import os
 import sys
 import signal
-
+import logging
 import argparse
 
 import utilities
@@ -74,9 +74,12 @@ class DTNRPyC(object):
         # Before starting, check, if the config file can be parsed
         # and do some other checks (for server or client, respectively).
         if args.server:
+            utilities.add_logfile("worker.log")
             utilities.pre_exec_checks(args.config_path, server_checks=True)
             server.server_listen(args.queue)
+            
         elif args.job_file_path:
+            utilities.add_logfile("client.log")
             utilities.pre_exec_checks(
                 args.config_path, client_jobfle=args.job_file_path)
             client.client_call(args.job_file_path)
@@ -91,7 +94,7 @@ def signal_handler(_, __):
         __ -- Not used.
     '''
 
-    utilities.pwarn('Stopping DTN-RPyC.')
+    utilities.LOGGER.info('Stopping DTN-RPyC.')
     sys.exit(0)
 
 if __name__ == '__main__':

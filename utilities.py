@@ -12,6 +12,7 @@ import zipfile
 import errno
 import math
 import time
+import logging
 
 import requests
 from numpy import random
@@ -36,80 +37,31 @@ RANDOM = 'random'
 BEST = 'best'
 PROB = 'probabilistic'
 
-def seed(random_file_path="random.seed"):
-    # create predictable random numbers (for server selection)
-    with open(random_file_path, "r") as random_file:
-        seed = random_file.read()
-        pinfo("Successfully read seed from {}.".format(random_file_path))
-    random.seed(int(seed) if seed else 0)
-
 # Hold the configuration read from config file.
 CONFIGURATION = {}
 
 # This are the available capabilities.
 filter_keywords = ['gps_coord', 'cpu_load', 'memory', 'disk_space']
 
+LOGGER = logging.getLogger("dtnrpc")
+LOGGER.setLevel(logging.DEBUG)
 
-def log_time():
-    '''Simple function for getting the current time in seconds
+def add_logfile(file_path, level=logging.DEBUG):
+    log_handler = logging.FileHandler(file_path)
+    log_handler.setLevel(level)
+    log_handler.setFormatter(logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s'))
+    LOGGER.addHandler(log_handler)
 
-    Returns:
-        Unix time in seconds as string
-    '''
-
-    return str(time.time())
-
-# ANSI color codes.
-RESET = '\033[0m'
-FATAL = '\033[1m\033[31m[{}]FATAL: {}\033[0m\033[31m{}'  # Red
-INFO = '\033[1m\033[32m[{}]INFO: {}\033[0m\033[32m{}'  # Green
-WARN = '\033[1m\033[33m[{}]WARN: {}\033[0m\033[33m{}'  # Yellow
-DEBUG = '\033[1m\033[34m[{}]DEBUG: {}\033[0m\033[34m{}'  # Blue
-
-
-def pdebug(string_to_print):
-    '''Print blue text for debugging
-
-    Arguments:
-        string_to_print -- The string to be printed
-    '''
-
-    print(DEBUG.format(log_time(), str(string_to_print), RESET))
-    sys.stdout.flush()
-
-
-def pfatal(string_to_print):
-    '''Print red text due to an error
-
-    Arguments:
-        string_to_print -- The string to be printed
-    '''
-
-    print(FATAL.format(log_time(), str(string_to_print), RESET))
-    sys.stdout.flush()
-
-
-def pinfo(string_to_print):
-    '''Print green text for information
-
-    Arguments:
-        string_to_print -- The string to be printed
-    '''
-
-    print(INFO.format(log_time(), str(string_to_print), RESET))
-    sys.stdout.flush()
-
-
-def pwarn(string_to_print):
-    '''Print yellow text for warning
-
-    Arguments:
-        string_to_print -- The string to be printed
-    '''
-
-    print(WARN.format(log_time(), str(string_to_print), RESET))
-    sys.stdout.flush()
-
+def seed(random_file_path="random.seed"):
+    # creates predictable random numbers (for server selection)
+    try:
+        with open(random_file_path, "r") as random_file:
+            seed = random_file.read()
+            LOGGER.info("Successfully read seed from {}.".format(random_file_path))
+        random.seed(int(seed))
+    except Exception:
+        LOGGER.info("Couldn't read seed from {}, using default.".format(random_file_path))
+        random.seed(0)
 
 class Server():
     '''Simple class for representing servers
@@ -256,19 +208,19 @@ def config_files_present(server=True):
     '''
     if server:
         if not os.path.exists(CONFIGURATION['bins']):
-            pfatal('RPC binaries paht {} does not exist.'.format(
+            LOGGER.critical('RPC binaries paht {} does not exist.'.format(
                 CONFIGURATION['bins']))
             return False
         if not os.path.exists(CONFIGURATION['rpcs']):
-            pfatal('RPC definition file {} does not exist.'.format(
+            LOGGER.critical('RPC definition file {} does not exist.'.format(
                 CONFIGURATION['rpcs']))
             return False
         if not os.path.exists(CONFIGURATION['capabilites']):
-            pfatal('Capabilities file {} does not exist.'.format(
+            LOGGER.critical('Capabilities file {} does not exist.'.format(
                 CONFIGURATION['capabilites']))
             return False
     if not os.path.exists(CONFIGURATION['location']):
-        pfatal('Location file {} does not exist.'.format(
+        LOGGER.critical('Location file {} does not exist.'.format(
             CONFIGURATION['location']))
         return False
     return True
@@ -296,7 +248,7 @@ def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
     if not config_files_present(server=False):
         sys.exit(1)
     if client_jobfle and not os.path.exists(client_jobfle):
-        pfatal('Can not find job file.')
+        LOGGER.critical('Can not find job file.')
         sys.exit(1)
 
 
@@ -318,7 +270,7 @@ def read_config(path):
         return True
 
     except FileNotFoundError:
-        pfatal('Main config file {} is not available.'.format(path))
+        LOGGER.critical('Main config file {} is not available.'.format(path))
         return False
 
 
@@ -563,7 +515,7 @@ def serval_running():
             passwd=CONFIGURATION['passwd']
         ).keyring.get_identities()
     except requests.exceptions.ConnectionError:
-        pfatal('Serval is not running. Start with \'servald start\'')
+        LOGGER.critical('Serval is not running. Start with \'servald start\'')
         return False
     return True
 
