@@ -9,6 +9,7 @@ import os
 import time
 import math
 import sys
+import hashlib
 
 from pyserval.exceptions import DecryptionError
 from pyserval.client import Client
@@ -39,42 +40,67 @@ def client_call(job_file_path):
     rhizome = SERVAL.rhizome
     client_default_sid = SERVAL.keyring.default_identity().sid
 
+    pinfo('Client SID: {}, job file: {}'.format(client_default_sid,
+                                                job_file_path))
+
     # Parse the job file and store all jobs in jobs.
     jobs = utilities.parse_jobfile(job_file_path)
     if not jobs:
-        pfatal('Job file does not contain jobs. Aborting.')
+        pfatal('Job file {} does not contain jobs. Aborting.'.format(
+            job_file_path))
         return
 
     # This is the first job to be called. We remember it here for
     # further processing.
     first_job = jobs.joblist[0]
 
+    hash_base_string = '{}_{}_{}'.format(first_job.procedure,
+                                         first_job.server,
+                                         str(math.floor(time.time())))
+    encoded_hash_base_string = hash_base_string.encode('utf-8')
+
+    job_id = hashlib.sha256(encoded_hash_base_string).hexdigest()[:8]
+
+    pinfo('({}) Job file parsed. First Job is {} with ID {}.'.format(
+        job_id, first_job.procedure, job_id))
+
     # If the server address is 'any', we have to find a server, which
     # offers this procedure.
     if first_job.server == 'any':
-        pinfo('The address is any, searching for server.')
+        pinfo('({}) The address is any, searching for server.'.format(job_id))
 
         for i in range(10):
             # First, get all available offers from the Rhizome store.
             servers = utilities.parse_available_servers(rhizome,
                                                         client_default_sid)
             if not servers:
-                pwarn('Could not find any servers for the job in try {}/10'.format(i))
+                pwarn(
+                    '({}) Could not find any servers for the job in try {}/10'.
+                    format(job_id, i))
                 time.sleep(1)
                 continue
+
+            pinfo('({}) Found {} offers. Searching possible server.'.format(
+                len(servers), job_id))
 
             # Secondly, get servers offering the desired procedure.
             servers = utilities.find_available_servers(servers, first_job)
             if not servers:
-                pwarn('Could not find any capable servers for the job in try {}/10'.format(i))
+                pwarn(
+                    '({}) Could not find any capable servers for the job in try {}/10'.
+                    format(job_id, i))
                 time.sleep(1)
                 continue
 
             break
 
         if not servers:
-            pfatal('Could not find any servers for the job')
+            pfatal(
+                '({}) Could not find any servers for the job'.format(job_id))
             return
+
+        pinfo('({}) Found {} servers. Getting server based on {} algorithm.'.
+              format(job_id, len(servers), CONFIGURATION['server']))
 
         # If we have a list of potential servers, get the server based on
         # the selection algorithm as in the configure script.
@@ -86,13 +112,13 @@ def client_call(job_file_path):
         utilities.replace_any_to_sid(job_file_path, first_job.line,
                                      first_job.server)
 
-        pinfo('Using server {} for the fist job.'.format(first_job.server))
+        pinfo('({}) Using server {} for the fist job.'.format(
+            job_id, first_job.server))
 
     # All involved files in a call should be uniquely named.
-    # Thus, we use the procedure name, the server SID and a timestamp.
-    zip_file_base_path = '{}_{}_{}'.format(first_job.procedure,
-                                           first_job.server,
-                                           str(math.floor(time.time())))
+    # Thus, we use the job id, which is a hash of
+    # procedure name, the server SID and a timestamp.
+    zip_file_base_path = job_id
 
     # Iterate through all arguments and check if it is file.
     # If so, add it to the file list to be ZIP'd.
@@ -108,7 +134,9 @@ def client_call(job_file_path):
 
     # Now we can crate the ZIP file...
     zip_file = utilities.make_zip(zip_list, zip_file_base_path + '_call')
-    pinfo('Prepared ZIP file for call.')
+
+    pinfo('({}) Prepared ZIP file {} for call.'.format(
+        job_id, zip_file_base_path + '_call'))
 
     # ... open it ...
     payload = open(zip_file, 'rb')
@@ -119,14 +147,19 @@ def client_call(job_file_path):
         payload=payload.read(),
         service=RPC,
         recipient=first_job.server,
-        custom_manifest={'type': CALL, 'originator': client_default_sid}
-    )
+        custom_manifest={
+            'type': CALL,
+            'originator': client_default_sid,
+            'rpcid': job_id
+        })
     payload.close()
-    pinfo('Procedure is called. Waiting for the result.')
+    pinfo('({}) Procedure {} is called: bid is {}'.format(
+        job_id, first_job.procedure, call_bundle.bundle_id))
 
     # Now we wait for the result.
     token = call_bundle.bundle_id
     result_received = False
+    total_wait_time = 0
     while not result_received:
         bundles = rhizome.get_bundlelist()
 
@@ -157,14 +190,16 @@ def client_call(job_file_path):
                 continue
 
             # Yay, ACK received.
-            if potential_result.manifest.type == ACK:
-                pinfo('Received ACK for {} from {}'.format(
-                    potential_result.manifest.name,
+            if potential_result.manifest.type == ACK and potential_result.manifest.rpcid == job_id:
+                pinfo('({}) Received ACK from {}'.format(
+                    potential_result.manifest.rpcid,
                     potential_result.manifest.sender))
 
             # Here we have the result.
-            if potential_result.manifest.type == RESULT:
-                pinfo('Received result, preparing download.')
+            if potential_result.manifest.type == RESULT and potential_result.manifest.rpcid == job_id:
+                pinfo(
+                    '({}) Received result, preparing download.'.format(
+                        potential_result.manifest.rpcid))
                 # Use the same filename as for the call, except
                 # we append result instead of call to the name.
                 result_path = zip_file_base_path + '_result.zip'
@@ -173,7 +208,8 @@ def client_call(job_file_path):
                 # write it to the mentioned ZIP file
                 with open(result_path, 'wb') as zip_file:
                     zip_file.write(potential_result.payload)
-                pinfo('Download is done. Cleaning up store.')
+                pinfo(
+                    '({}) Download is done. Cleaning up store.'.format(job_id))
 
                 # The final step is to cleanup the store by updating
                 # the call bundle by setting the CLEANUP flag to the
@@ -184,7 +220,7 @@ def client_call(job_file_path):
                 call_bundle.update()
                 result_received = True
 
-                pinfo('Received result: {}'.format(result_path))
+                pinfo('({}) Received result: {}'.format(job_id, result_path))
                 break
 
             # One of the servers had an error, so see what is going on.
@@ -194,13 +230,16 @@ def client_call(job_file_path):
                 call_bundle.payload = ''
                 call_bundle.update()
                 result_received = True
-                pwarn('Received error \'{}\' from {} for call {}'.format(
-                    potential_result.manifest.reason,
-                    potential_result.manifest.sender,
-                    potential_result.manifest.name))
-                pwarn('See {} for more information'.format(result_path))
+                pwarn(
+                    '({}) Received error \'{}\' from {} for call {}. See {} for more information'.
+                    format(job_id,
+                           potential_result.manifest.reason,
+                           potential_result.manifest.sender,
+                           potential_result.manifest.name,
+                           result_path))
                 break
 
         # After the for loop, remember the recent bundle id.
         token = bundles[0].bundle_id
+        total_wait_time = total_wait_time + 1
         time.sleep(1)

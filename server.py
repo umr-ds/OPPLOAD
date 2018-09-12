@@ -156,8 +156,6 @@ def server_offering_procedure(job):
 
     global LOCK
 
-    pinfo('Checking if offering {}'.format(job.procedure))
-
     with LOCK:
         # The the offered procedures
         _, offered_jobs = get_offered_procedures(
@@ -196,8 +194,6 @@ def server_execute_procedure(job, env_path):
     Returns:
         The return code of the procedure and a string containing the result
     '''
-
-    pinfo('Starting execution of {}'.format(job.procedure))
 
     # Path of the executable itself.
     bin_path = utilities.CONFIGURATION['bins'] + '/%s %s'
@@ -255,8 +251,6 @@ def is_capable(job):
     Returns:
         True, is the server is capable, False otherwise
     '''
-
-    pinfo('Checking if capable to execute {}'.format(job.procedure))
 
     # If there are no requirements for job, just execute.
     if not job.filter_dict:
@@ -336,7 +330,8 @@ def return_error(call_bundle,
         custom_manifest={
             'type': ERROR,
             'reason': reason,
-            'originator': call_bundle.manifest.originator
+            'originator': call_bundle.manifest.originator,
+            'rpcid': call_bundle.manifest.rpcid
         })
 
 
@@ -354,12 +349,11 @@ def server_handle_call(potential_call):
 
     # All involved files in a call should be uniquely named.
     # Thus, we use the procedure name, the server SID and a timestamp.
-    zip_file_base_path = '{}_{}_{}'.format(potential_call.manifest.name,
-                                           potential_call.manifest.sender,
-                                           potential_call.manifest.version)
+    job_id = potential_call.manifest.rpcid
+    zip_file_base_path = potential_call.manifest.rpcid
 
     # Download the payload from the Rhizome store
-    with open(zip_file_base_path + '_call.zip', 'wb') as zip_file:
+    with open(zip_file_base_path + '_step.zip', 'wb') as zip_file:
         zip_file.write(potential_call.payload)
 
     jobs = None
@@ -367,8 +361,8 @@ def server_handle_call(potential_call):
     file_list = None
 
     # If we have a valid ZIP file, we extract it and parse the job file.
-    if zipfile.is_zipfile(zip_file_base_path + '_call.zip'):
-        file_list = utilities.extract_zip(zip_file_base_path + '_call.zip',
+    if zipfile.is_zipfile(zip_file_base_path + '_step.zip'):
+        file_list = utilities.extract_zip(zip_file_base_path + '_step.zip',
                                           zip_file_base_path + '/')
 
         # Find the job file and parse it.
@@ -384,7 +378,7 @@ def server_handle_call(potential_call):
         return_error(
             potential_call,
             reason,
-            file_list=[zip_file_base_path + '_call.zip'],
+            file_list=[zip_file_base_path + '_step.zip'],
             client_sid=potential_call.manifest.originator)
         return
 
@@ -416,6 +410,7 @@ def server_handle_call(potential_call):
             break
 
     # Do a check, if the procedure is offered and inform the client if not.
+    pinfo('({}) Checking if offering {}'.format(job_id, job.procedure))
     if possible_job is None or not server_offering_procedure(possible_job):
         reason = 'Server is not offering this procedure.'
         pfatal(reason)
@@ -429,6 +424,8 @@ def server_handle_call(potential_call):
 
     # Check, if the server is capable to execute the procedure and inform
     # the client if not.
+    pinfo('({}) Checking if capable to execute {}'.format(
+        job_id, job.procedure))
     if not is_capable(possible_job):
         reason = 'Server is not capable to execute the job.'
         pfatal(reason)
@@ -450,19 +447,22 @@ def server_handle_call(potential_call):
             recipient=potential_call.manifest.sender,
             custom_manifest={
                 'type': ACK,
-                'originator': potential_call.manifest.originator
+                'originator': potential_call.manifest.originator,
+                'rpcid': job_id
             })
     except DuplicateBundleException:
         pass
 
     # After sending the ACK, execute the procedure and store the result.
+    pinfo('({}) Starting execution of {}'.format(job_id, job.procedure))
     code, result = server_execute_procedure(possible_job,
                                             zip_file_base_path + '/')
     result_decoded = result.decode('utf-8')
 
     # Here we need to prepare the job for the next hop.
     if possible_next_job is not None:
-        pinfo("Preparing job for next hop.")
+        pinfo('({}) Preparing job {} for next hop.'.format(
+            job_id, job.procedure))
         # After executing the job, we have to update the job_file.
         # Therefore, we first read it.
         job_file = open(job_file_path, 'r+')
@@ -493,7 +493,7 @@ def server_handle_call(potential_call):
         # If the next server is again any, we search a new one for the next
         # job. This is about the same process as in the client.
         if possible_next_job.server == 'any':
-            pinfo('Searching next server.')
+            pinfo('({}) Searching next server.'.format(job_id))
             servers = utilities.parse_available_servers(
                 SERVAL.rhizome, SERVER_DEFAULT_SID,
                 potential_call.manifest.originator)
@@ -527,13 +527,14 @@ def server_handle_call(potential_call):
             utilities.replace_any_to_sid(job_file_path, possible_next_job.line,
                                          possible_next_job.server)
 
-            pinfo('Found next server: {}'.format(possible_next_job.server))
+            pinfo('({}) Found server {}'.format(job_id,
+                                                possible_next_job.server))
 
         # Done. Make the payload containing all required files, read the
         # payload ...
         payload_path = utilities.make_zip(
             file_list,
-            name=zip_file_base_path + '_result',
+            name=zip_file_base_path + '_step_result',
             subpath_to_remove=zip_file_base_path + '/')
         payload = open(payload_path, 'rb')
 
@@ -545,7 +546,8 @@ def server_handle_call(potential_call):
             recipient=possible_next_job.server,
             custom_manifest={
                 'type': CALL,
-                'originator': potential_call.manifest.originator
+                'originator': potential_call.manifest.originator,
+                'rpcid': job_id
             })
 
         # We have to remember the bundle id for cleanup lateron.
@@ -556,7 +558,7 @@ def server_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
     else:
-        pinfo('Preparing result for client.')
+        pinfo('({}) Preparing result from {}.'.format(job_id, job.procedure))
         # There is no next hop, return the result to the client by
         # building and reading the payload...
         payload_path = utilities.make_zip(
@@ -568,7 +570,8 @@ def server_handle_call(potential_call):
         # ... constructing the custom manifest part ...
         custom_manifest = {
             'type': None,
-            'originator': potential_call.manifest.originator
+            'originator': potential_call.manifest.originator,
+            'rpcid': job_id
         }
 
         # ... (if code is 1, an error occured) ...
@@ -606,8 +609,6 @@ def server_cleanup_store(bundle):
 
     global CLEANUP_BUNDLES
     global SERVAL
-
-    pwarn('Cleaning up store for bundle {}'.format(bundle.bundle_id))
 
     # Get all IDs associated with this bundle id
     stored_bundle_ids = CLEANUP_BUNDLES[bundle.bundle_id]
@@ -684,14 +685,16 @@ def server_listen(queue):
 
             # Yay, ACK received.
             if potential_call.manifest.type == ACK:
-                pinfo('Received ACK for {} from {}'.format(
+                pinfo('({}) Received ACK for {} from {}'.format(
+                    potential_call.manifest.rpcid,
                     potential_call.manifest.name,
                     potential_call.manifest.sender))
 
             # All checks pass, start the execution (either in background
             # or blocking in a queue)
             if potential_call.manifest.type == CALL:
-                pinfo('Received call. Starting handling.')
+                pinfo('({}) Received call. Starting handling.'.format(
+                    potential_call.manifest.rpcid))
                 if queue:
                     server_handle_call(potential_call)
                 else:
@@ -699,6 +702,8 @@ def server_listen(queue):
 
             # If the bundle is a cleanup file, we start the cleanup routine.
             elif potential_call.manifest.type == CLEANUP:
+                pwarn('({}) Cleaning up store for bundle {}'.format(
+                    potential_call.manifest.rpcid, bundle.bundle_id))
                 server_cleanup_store(potential_call)
 
         # After the for loop, remember the recent bundle id.

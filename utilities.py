@@ -57,10 +57,10 @@ def log_time():
 
 # ANSI color codes.
 RESET = '\033[0m'
-FATAL = '\033[1m\033[31m[' + log_time() + ']FATAL: \033[0m\033[31m'  # Red
-INFO = '\033[1m\033[32m[' + log_time() + ']INFO: \033[0m\033[32m'  # Green
-WARN = '\033[1m\033[33m[' + log_time() + ']WARN: \033[0m\033[33m'  # Yellow
-DEBUG = '\033[1m\033[34m[' + log_time() + ']DEBUG: \033[0m\033[34m'  # Blue
+FATAL = '\033[1m\033[31m[{}]FATAL: {}\033[0m\033[31m{}'  # Red
+INFO = '\033[1m\033[32m[{}]INFO: {}\033[0m\033[32m{}'  # Green
+WARN = '\033[1m\033[33m[{}]WARN: {}\033[0m\033[33m{}'  # Yellow
+DEBUG = '\033[1m\033[34m[{}]DEBUG: {}\033[0m\033[34m{}'  # Blue
 
 
 def pdebug(string_to_print):
@@ -70,7 +70,7 @@ def pdebug(string_to_print):
         string_to_print -- The string to be printed
     '''
 
-    print(DEBUG + str(string_to_print) + RESET)
+    print(DEBUG.format(log_time(), str(string_to_print), RESET))
     sys.stdout.flush()
 
 
@@ -81,7 +81,7 @@ def pfatal(string_to_print):
         string_to_print -- The string to be printed
     '''
 
-    print(FATAL + str(string_to_print) + RESET)
+    print(FATAL.format(log_time(), str(string_to_print), RESET))
     sys.stdout.flush()
 
 
@@ -92,7 +92,7 @@ def pinfo(string_to_print):
         string_to_print -- The string to be printed
     '''
 
-    print(INFO + str(string_to_print) + RESET)
+    print(INFO.format(log_time(), str(string_to_print), RESET))
     sys.stdout.flush()
 
 
@@ -103,7 +103,7 @@ def pwarn(string_to_print):
         string_to_print -- The string to be printed
     '''
 
-    print(WARN + str(string_to_print) + RESET)
+    print(WARN.format(log_time(), str(string_to_print), RESET))
     sys.stdout.flush()
 
 
@@ -252,12 +252,20 @@ def config_files_present(server=True):
     '''
     if server:
         if not os.path.exists(CONFIGURATION['bins']):
+            pfatal('RPC binaries paht {} does not exist.'.format(
+                CONFIGURATION['bins']))
             return False
         if not os.path.exists(CONFIGURATION['rpcs']):
+            pfatal('RPC definition file {} does not exist.'.format(
+                CONFIGURATION['rpcs']))
             return False
         if not os.path.exists(CONFIGURATION['capabilites']):
+            pfatal('Capabilities file {} does not exist.'.format(
+                CONFIGURATION['capabilites']))
             return False
     if not os.path.exists(CONFIGURATION['location']):
+        pfatal('Location file {} does not exist.'.format(
+            CONFIGURATION['location']))
         return False
     return True
 
@@ -276,16 +284,12 @@ def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
     '''
 
     if not read_config(config_path):
-        pfatal('Config file is not available.')
         sys.exit(1)
     if not serval_running():
-        pfatal('Serval is not running.')
         sys.exit(1)
     if server_checks and not config_files_present(server=True):
-        pfatal('Can not find config files.')
         sys.exit(1)
     if not config_files_present(server=False):
-        pfatal('Can not find config files.')
         sys.exit(1)
     if client_jobfle and not os.path.exists(client_jobfle):
         pfatal('Can not find job file.')
@@ -310,6 +314,7 @@ def read_config(path):
         return True
 
     except FileNotFoundError:
+        pfatal('Main config file {} is not available.'.format(path))
         return False
 
 
@@ -554,6 +559,7 @@ def serval_running():
             passwd=CONFIGURATION['passwd']
         ).keyring.get_identities()
     except requests.exceptions.ConnectionError:
+        pfatal('Serval is not running. Start with \'servald start\'')
         return False
     return True
 
