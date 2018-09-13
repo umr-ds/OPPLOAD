@@ -56,9 +56,9 @@ def client_call(job_file_path):
     # further processing.
     first_job = jobs.joblist[0]
 
-    hash_base_string = '{}_{}_{}'.format(first_job.procedure,
-                                         first_job.server,
-                                         str(math.floor(time.time())))
+    hash_base_string = '{}{}{:.9f}'.format(first_job.procedure,
+                                         client_default_sid,
+                                         time.time())
     encoded_hash_base_string = hash_base_string.encode('utf-8')
 
     job_id = hashlib.sha256(encoded_hash_base_string).hexdigest()[:8]
