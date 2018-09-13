@@ -373,7 +373,7 @@ def server_handle_call(potential_call):
     else:
         # We have not found a valid ZIP file, so abort here and inform
         # the client.
-        reason = ' | {} is not a valid ZIP file.'.format(zip_file_base_path)
+        reason = '{} | {} is not a valid ZIP file.'.format(job_id, zip_file_base_path)
         LOGGER.critical(reason)
         return_error(
             potential_call,
@@ -384,7 +384,7 @@ def server_handle_call(potential_call):
 
     # We could not find any jobs in the ZIP, so abort and inform the client.
     if jobs is None:
-        reason = ' | Call has no job file.'
+        reason = '{} | Call has no job file.'.format(job_id)
         LOGGER.critical(reason)
         return_error(
             potential_call,
@@ -454,14 +454,16 @@ def server_handle_call(potential_call):
         pass
 
     # After sending the ACK, execute the procedure and store the result.
-    LOGGER.info('{} | Starting execution of {}'.format(job_id, job.procedure))
+    LOGGER.info(
+        '{} | -Execution- Starting execution of {}...'
+        .format(job_id, job.procedure))
     code, result = server_execute_procedure(possible_job,
                                             zip_file_base_path + '/')
     result_decoded = result.decode('utf-8')
 
     # Here we need to prepare the job for the next hop.
     if possible_next_job is not None:
-        LOGGER.info('{} | Preparing job {} for next hop.'.format(
+        LOGGER.info('{} | -Runtime- Preparing job {} for next hop.'.format(
             job_id, job.procedure))
         # After executing the job, we have to update the job_file.
         # Therefore, we first read it.
@@ -499,7 +501,7 @@ def server_handle_call(potential_call):
                 potential_call.manifest.originator)
             if not servers:
                 reason = 'Could not find any suitable servers. Aborting.'
-                LOGGER.critical(reason)
+                LOGGER.critical(" | " + reason)
                 return_error(
                     potential_call,
                     reason,
@@ -550,6 +552,11 @@ def server_handle_call(potential_call):
                 'rpcid': job_id
             })
 
+        LOGGER.info(
+            '{} | -Transmission- Next step {} is called: bid is {}'.format(
+                job_id, possible_next_job.procedure,
+                next_hop_bundle.bundle_id))
+
         # We have to remember the bundle id for cleanup lateron.
         id_to_store = next_hop_bundle.bundle_id
         if potential_call.bundle_id in CLEANUP_BUNDLES:
@@ -558,7 +565,7 @@ def server_handle_call(potential_call):
             CLEANUP_BUNDLES[potential_call.bundle_id] = [id_to_store]
 
     else:
-        LOGGER.info('{} | Preparing result from {}.'.format(
+        LOGGER.info('{} | -Runtime- Preparing result from {}.'.format(
             job_id, job.procedure))
         # There is no next hop, return the result to the client by
         # building and reading the payload...
@@ -588,6 +595,9 @@ def server_handle_call(potential_call):
             service=RPC,
             recipient=jobs.client_sid,
             custom_manifest=custom_manifest)
+
+        LOGGER.info('{} | -Transmission- Result is sent: bid is {}'.format(
+            job_id, result_bundle.bundle_id))
 
         # We have to remember the bundle id for cleanup lateron.
         id_to_store = result_bundle.bundle_id
@@ -700,8 +710,9 @@ def server_listen(queue):
             # All checks pass, start the execution (either in background
             # or blocking in a queue)
             elif potential_call.manifest.type == CALL:
-                LOGGER.info('{} | Received call. Starting handling.'.format(
-                    potential_call.manifest.rpcid))
+                LOGGER.info(
+                    '{} | -Runtime- Received call, starting handling.'
+                    .format(potential_call.manifest.rpcid))
                 if queue:
                     server_handle_call(potential_call)
                 else:
@@ -713,11 +724,14 @@ def server_listen(queue):
                     potential_call.manifest.rpcid, bundle.bundle_id))
                 server_cleanup_store(potential_call)
 
+            elif potential_call.manifest.type == RESULT:
+                LOGGER.debug('{} | Recieved RPC result, skipping.'.format(
+                    potential_call.manifest.rpcid))
             else:
                 LOGGER.error(
-                    "{} | Received RPC bundle of unknown type ({}), skipping.".
-                    format(potential_call.manifest.rpcid,
-                           potential_call.manifest.type))
+                    "{} | Received RPC bundle of unknown type ({}), skipping."
+                    .format(potential_call.manifest.rpcid,
+                            potential_call.manifest.type))
 
         # After the for loop, remember the recent bundle id.
         token = bundles[0].bundle_id

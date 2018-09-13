@@ -40,14 +40,16 @@ def client_call(job_file_path):
     rhizome = SERVAL.rhizome
     client_default_sid = SERVAL.keyring.default_identity().sid
 
-    LOGGER.info(' | Client SID: {}, job file: {}'.format(client_default_sid,
-                                                job_file_path))
+    LOGGER.info(
+        ' | Client SID: {}, job file: {}'
+        .format(client_default_sid, job_file_path))
 
     # Parse the job file and store all jobs in jobs.
     jobs = utilities.parse_jobfile(job_file_path)
     if not jobs:
-        LOGGER.critical(' | Job file {} does not contain jobs. Aborting.'.format(
-            job_file_path))
+        LOGGER.critical(
+            ' | Job file {} does not contain jobs. Aborting.'
+            .format(job_file_path))
         return
 
     # This is the first job to be called. We remember it here for
@@ -61,13 +63,16 @@ def client_call(job_file_path):
 
     job_id = hashlib.sha256(encoded_hash_base_string).hexdigest()[:8]
 
-    LOGGER.info('{} | Job file parsed. First Job is {} with ID {}.'.format(
-        job_id, first_job.procedure, job_id))
+    LOGGER.info(
+        '{} | -Runtime- Job file parsed. First Job is {} with ID {}.'
+        .format(job_id, first_job.procedure, job_id))
 
     # If the server address is 'any', we have to find a server, which
     # offers this procedure.
     if first_job.server == 'any':
-        LOGGER.info('{} | The address is any, searching for server.'.format(job_id))
+        LOGGER.info(
+            '{} | The address is any, searching for server.'
+            .format(job_id))
 
         for i in range(10):
             # First, get all available offers from the Rhizome store.
@@ -80,8 +85,9 @@ def client_call(job_file_path):
                 time.sleep(1)
                 continue
 
-            LOGGER.info('{} | Found {} offers. Searching possible server.'.format(
-                job_id, len(servers)))
+            LOGGER.info(
+                '{} | Found {} offers. Searching possible server.'
+                .format(job_id, len(servers)))
 
             # Secondly, get servers offering the desired procedure.
             servers = utilities.find_available_servers(servers, first_job)
@@ -99,8 +105,9 @@ def client_call(job_file_path):
                 '{} | Could not find any servers for the job'.format(job_id))
             return
 
-        LOGGER.info('{} | Found {} servers. Getting server based on {} algorithm.'.
-              format(job_id, len(servers), CONFIGURATION['server']))
+        LOGGER.info(
+            '{} | Found {} servers. Getting server based on {} algorithm.'
+            .format(job_id, len(servers), CONFIGURATION['server']))
 
         # If we have a list of potential servers, get the server based on
         # the selection algorithm as in the configure script.
@@ -152,7 +159,7 @@ def client_call(job_file_path):
             'rpcid': job_id
         })
     payload.close()
-    LOGGER.info('{} | Procedure {} is called: bid is {}'.format(
+    LOGGER.info('{} | -Transmission- Procedure {} is called: bid is {}'.format(
         job_id, first_job.procedure, call_bundle.bundle_id))
 
     # Now we wait for the result.
@@ -189,15 +196,17 @@ def client_call(job_file_path):
                 continue
 
             # Yay, ACK received.
-            if potential_result.manifest.type == ACK and potential_result.manifest.rpcid == job_id:
+            if (potential_result.manifest.type == ACK and
+                    potential_result.manifest.rpcid == job_id):
                 LOGGER.info('{} | Received ACK from {}'.format(
                     potential_result.manifest.rpcid,
                     potential_result.manifest.sender))
 
             # Here we have the result.
-            if potential_result.manifest.type == RESULT and potential_result.manifest.rpcid == job_id:
+            if (potential_result.manifest.type == RESULT and
+                    potential_result.manifest.rpcid == job_id):
                 LOGGER.info(
-                    '{} | Received result, preparing download.'.format(
+                    '{} | -Runtime- Received result.'.format(
                         potential_result.manifest.rpcid))
                 # Use the same filename as for the call, except
                 # we append result instead of call to the name.
@@ -219,7 +228,9 @@ def client_call(job_file_path):
                 call_bundle.update()
                 result_received = True
 
-                LOGGER.info('{} | Received result: {}'.format(job_id, result_path))
+                LOGGER.info(
+                    '{} | -End- Finished RPC, result: {}'
+                    .format(job_id, result_path))
                 break
 
             # One of the servers had an error, so see what is going on.
@@ -230,12 +241,12 @@ def client_call(job_file_path):
                 call_bundle.update()
                 result_received = True
                 LOGGER.warn(
-                    '{} | Received error \'{}\' from {} for call {}. See {} for more information'.
-                    format(job_id,
-                           potential_result.manifest.reason,
-                           potential_result.manifest.sender,
-                           potential_result.manifest.name,
-                           result_path))
+                    '{} | -End- Received error \'{}\' from {} for call {}. See {} for more information'
+                    .format(job_id,
+                            potential_result.manifest.reason,
+                            potential_result.manifest.sender,
+                            potential_result.manifest.name,
+                            result_path))
                 break
 
         # After the for loop, remember the recent bundle id.
