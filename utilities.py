@@ -167,7 +167,7 @@ def select_probabilistic_server(server_list):
     '''
 
     sorted_server_list = sort_servers(server_list)
-    index = round(random.gamma(2.0))
+    index = abs(round(random.standard_normal()))
     try:
         return sorted_server_list[index]
     except IndexError:
