@@ -617,6 +617,14 @@ def parse_available_servers(rhizome, own_sid, originator_sid=None):
         if bundle.manifest.sender == originator_sid:
             continue
 
+        # A offer has to be seen within the last 120 seconds.
+        bundle_version = int(bundle.manifest.version)
+        time_in_store = int(time.time() * 1000) - bundle_version
+        LOGGER.debug('Verion: {}, time in store: {}'.format(
+            bundle_version, time_in_store))
+        if time_in_store > 120000:
+            continue
+
         jobs = []
         capabilities = {}
 
