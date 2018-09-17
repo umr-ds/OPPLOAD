@@ -41,443 +41,33 @@ PROB = 'probabilistic'
 CONFIGURATION = {}
 
 # This are the available capabilities.
-filter_keywords = ['gps_coord', 'cpu_load', 'memory', 'disk_space']
+filter_keywords = ['energy', 'gps_coord', 'cpu_load', 'memory', 'disk_space']
 
 LOGGER = logging.getLogger("dtnrpc")
 LOGGER.setLevel(logging.DEBUG)
 
+
 def add_logfile(file_path, level=logging.DEBUG):
     log_handler = logging.FileHandler(file_path)
     log_handler.setLevel(level)
-    log_handler.setFormatter(logging.Formatter('%(asctime)-23s | %(name)-6s | %(levelname)-8s | %(message)s'))
+    log_handler.setFormatter(
+        logging.Formatter(
+            '%(asctime)-23s | %(name)-6s | %(levelname)-8s | %(message)s'))
     LOGGER.addHandler(log_handler)
+
 
 def seed(random_file_path="random.seed"):
     # creates predictable random numbers (for server selection)
     try:
         with open(random_file_path, "r") as random_file:
             seed = random_file.read()
-            LOGGER.info(" | Successfully read seed from {}.".format(random_file_path))
+            LOGGER.info(
+                " | Successfully read seed from {}.".format(random_file_path))
         random.seed(int(seed))
     except Exception:
-        LOGGER.info(" | Couldn't read seed from {}, using default.".format(random_file_path))
+        LOGGER.info(" | Couldn't read seed from {}, using default.".format(
+            random_file_path))
         random.seed(0)
-
-class Server():
-    '''Simple class for representing servers
-    '''
-
-    def __init__(self,
-                 sid,
-                 jobs=None,
-                 gps_coord=None,
-                 cpu_load=None,
-                 memory=None,
-                 disk_space=None):
-        '''Server constructor
-
-        Arguments:
-            sid -- SID of the server
-
-        Keyword Arguments:
-            jobs -- All jobs offered (default: {None})
-            gps_coord -- Postion (x,y) (default: {None})
-            cpu_load -- CPU capability (default: {None})
-            memory -- Available memory (default: {None})
-            disk_space -- Available disk space (default: {None})
-        '''
-
-        self.sid = sid
-        self.gps_coord = gps_coord
-        self.cpu_load = float(cpu_load) if cpu_load else None
-        self.memory = float(memory) if memory else None
-        self.disk_space = float(disk_space) if disk_space else None
-        self.jobs = jobs
-
-
-def sort_servers(server_list):
-    '''Sort server list to the following key:
-    gps_coord: proximity (closer is better)
-    cpu_load: lower is better
-    memory: more is better
-    disk_space: more is better
-
-    Arguments:
-        server_list -- List of servers
-
-    Returns:
-        Sorted server list
-    '''
-
-    return sorted(
-        server_list,
-        key=lambda x: (x.gps_coord, x.cpu_load, -(x.memory), -(x.disk_space)))
-
-
-def select_first_server(server_list):
-    '''Select the first server
-
-    Arguments:
-        server_list -- List of servers
-
-    Returns:
-        The first server from the list
-    '''
-
-    return server_list[0]
-
-
-def select_random_server(server_list):
-    '''Select a random server
-
-    Arguments:
-        server_list -- List of servers
-
-    Returns:
-        A random server from the list
-    '''
-
-    return random.choice(server_list)
-
-
-def select_best_server(server_list):
-    '''Select the best server
-
-    Arguments:
-        server_list -- List of servers
-
-    Returns:
-        The best server based on the sorted list returned from
-        'sort_servers'
-    '''
-
-    return sort_servers(server_list)[0]
-
-
-def select_probabilistic_server(server_list):
-    '''Select one of the best servers.
-    Servers are first sorted using 'sort_servers' and then a server
-    is selected using the gamma distribution
-
-    Arguments:
-        server_list -- List of servers
-
-    Returns:
-        One of the best available servers.
-    '''
-
-    sorted_server_list = sort_servers(server_list)
-    index = abs(round(random.standard_normal()))
-    try:
-        return sorted_server_list[index]
-    except IndexError:
-        return sorted_server_list[-1]
-
-
-def select_server(server_list, selection_type=FIRST):
-    '''Server selection API function
-
-    Arguments:
-        server_list -- List of servers
-
-    Keyword Arguments:
-        selection_type -- The method to be used (default: {FIRST})
-
-    Returns:
-        A server from the server_list based on the selection_type
-    '''
-
-    if selection_type == FIRST:
-        return select_first_server(server_list)
-
-    if selection_type == RANDOM:
-        return select_random_server(server_list)
-
-    if selection_type == BEST:
-        return select_best_server(server_list)
-
-    if selection_type == PROB:
-        return select_probabilistic_server(server_list)
-
-
-def config_files_present(server=True):
-    '''Check, if all files from conf are present.
-
-    Returns:
-        True, if all files are available, False otherwise
-    '''
-    if server:
-        if not os.path.exists(CONFIGURATION['bins']):
-            LOGGER.critical(' | RPC binaries paht {} does not exist.'.format(
-                CONFIGURATION['bins']))
-            return False
-        if not os.path.exists(CONFIGURATION['rpcs']):
-            LOGGER.critical(' | RPC definition file {} does not exist.'.format(
-                CONFIGURATION['rpcs']))
-            return False
-        if not os.path.exists(CONFIGURATION['capabilites']):
-            LOGGER.critical(' | Capabilities file {} does not exist.'.format(
-                CONFIGURATION['capabilites']))
-            return False
-    if not os.path.exists(CONFIGURATION['location']):
-        LOGGER.critical(' | Location file {} does not exist.'.format(
-            CONFIGURATION['location']))
-        return False
-    return True
-
-
-def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
-    '''Check if all config files are available, if serval is running and
-    a job file is present
-
-    Arguments:
-        config_path -- Path to the main config file
-
-    Keyword Arguments:
-        server_checks -- If additional server checks should be done
-        (default: {False})
-        client_jobfle -- Path to the client job file (default: {None})
-    '''
-
-    if not read_config(config_path):
-        sys.exit(1)
-    if not serval_running():
-        sys.exit(1)
-    if server_checks and not config_files_present(server=True):
-        sys.exit(1)
-    if not config_files_present(server=False):
-        sys.exit(1)
-    if client_jobfle and not os.path.exists(client_jobfle):
-        LOGGER.critical(' | Can not find job file.')
-        sys.exit(1)
-
-
-def read_config(path):
-    '''Read and parse the main config file
-
-    Arguments:
-        path -- Path to the main config file
-
-    Returns:
-        True, if parsing was successful, False otherwise
-    '''
-
-    try:
-        with open(path, 'r') as rpc_conf:
-            for conf in rpc_conf:
-                conf_list = conf.split('=')
-                CONFIGURATION[conf_list[0].rstrip()] = conf_list[1].rstrip()
-        return True
-
-    except FileNotFoundError:
-        LOGGER.critical(' | Main config file {} is not available.'.format(path))
-        return False
-
-
-def extract_zip(path, extract_path):
-    '''Unzip 'path' to 'extract_path'
-
-    Arguments:
-        path -- Path of the ZIP file
-        extract_path -- Path of the destination
-
-    Returns:
-        A list of filenames containing all extracted files
-    '''
-
-    zipf = zipfile.ZipFile(path, 'r')
-    member_list = zipf.namelist()
-
-    # If the result folder does not exist, create it.
-    if not os.path.exists(extract_path):
-        os.makedirs(extract_path)
-
-    zipf.extractall(extract_path)
-    zipf.close()
-
-    # Prepend the extract_path to all extracted file paths.
-    member_list = [extract_path + x for x in member_list]
-
-    return member_list
-
-
-def make_zip(arg_list, name='tmp_container', subpath_to_remove=''):
-    '''Make a ZIP file containing everything in arg_list
-
-    Arguments:
-        arg_list -- List of files to be ZIP'd
-
-    Keyword Arguments:
-        name -- Name of the resulting ZIP file (default: {'tmp_container'})
-        subpath_to_remove -- Remove subpaths (default: {''})
-
-    Returns:
-        Name of the resulting ZIP file
-    '''
-
-    with zipfile.ZipFile(name + '.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for arg in arg_list:
-            zipf.write(arg, arg.replace(subpath_to_remove, ''))
-    return name + '.zip'
-
-
-def insert_to_line(line, appendix):
-    '''Inserts appendix to line
-
-    Arguments:
-        line -- The line to be changed
-        appendix -- String to inerst into line
-
-    Returns:
-        The changed line
-    '''
-
-    # We assume, that '|' is part of the line.
-    line = line.split('|')
-    line[0] = line[0].strip('\n')
-    line[0] = line[0] + ' ' + appendix
-
-    # if '|' is not available, just return.
-    if len(line) == 1:
-        line[0] = line[0] + '\n'
-        return line[0]
-
-    ret_line = line[0] + '|' + line[1]
-    return ret_line
-
-
-def parse_available_servers(rhizome, own_sid, originator_sid=None):
-    '''This function iterates through all RPC offers and parses them
-    into servers
-
-    Arguments:
-        rhizome -- Pyserval Rhizome connection
-        own_sid -- SID of the caller of this function
-        originator_sid -- SID of the originator a particular call.
-
-    Returns:
-        A list containing all found servers excluding self and originator
-    '''
-
-    # Get all bundles and check if any available. If not, just return.
-    bundles = rhizome.get_bundlelist()
-    if not bundles:
-        return None
-
-    server_list = []
-    for bundle in bundles:
-        # We are only intereseted in RPC offers.
-        if not bundle.manifest.service == OFFER:
-            continue
-
-        # Make sure, that we can not call ourself.
-        if bundle.manifest.sender == own_sid:
-            continue
-
-        # Do not call a procedure on the node which wants it to be offloaded...
-        if bundle.manifest.sender == originator_sid:
-            continue
-
-        jobs = []
-        capabilities = {}
-
-        # We found an offer from a remote server. Start parsing.
-        offers = rhizome.get_payload(bundle).decode('utf-8').split('\n')
-        for offer in offers:
-            # There are two lines containing :, which introduce new
-            # sections of the file. These can be skipped.
-            if ':' in offer:
-                continue
-
-            # If = is not in the line, than we have a procedure to be parsed
-            if '=' not in offer:
-                jobname = offer.split(' ')[0]
-                jobarguments = offer.split(' ')[1:]
-                jobs.append(
-                    Job(server=bundle.manifest.name,
-                        procedure=jobname,
-                        arguments=jobarguments))
-            else:
-                # If there is a =, then we have a capability.
-                _type, _value = offer.split('=')
-                if _type == 'gps_coord':
-                    # Location is a special case. We need to compute our
-                    # own distance to the server distance, which will be stored
-                    x1, y1 = _value.split(',')
-                    x2 = y2 = None
-                    with open(CONFIGURATION['location']) as coord_file:
-                        x2, y2 = coord_file.readline().split(' ')
-                        _value = math.sqrt((float(x1) - float(x2))**2 +
-                                           (float(y1) - float(y2))**2)
-
-                capabilities[_type] = _value
-
-        # After parsing, create a Server object and store it in the result list
-        server_list.append(
-            Server(bundle.manifest.name, jobs=jobs, **capabilities))
-
-    return server_list
-
-
-def find_available_servers(servers, job):
-    '''Function for finding server, which is offers the procedure and
-    is able to execute it
-
-    Arguments:
-        servers -- List of available servers
-        job -- The job to be executed
-
-    Returns:
-        List of servers, which offer and are able to execute the procedure.
-    '''
-
-    server_list = []
-    for server in servers:
-        # If the job has no capabilities, just execute it.
-        if not job.filter_dict:
-            server_list.append(server)
-            continue
-
-        for offered_job in server.jobs:
-            # This is not the procedure we are looking for, so skip this.
-            if offered_job.procedure != job.procedure or len(
-                    offered_job.arguments) != len(job.arguments):
-                continue
-
-            # If we found a server offering the procedure, check if it is
-            # capable to execute it.
-            fullfills = True
-            for requirement in job.filter_dict:
-                capability = getattr(server, requirement)
-                # If the server has no restrictions regarding this particular
-                # requirement, just add the server to the result list.
-                if not capability:
-                    server_list.append(server)
-                    continue
-
-                requirement_value = job.filter_dict[requirement]
-
-                if requirement == 'cpu_load' and int(capability) > int(
-                        requirement_value):
-                    fullfills = False
-                    break
-                if requirement == 'disk_space' and int(capability) < int(
-                        requirement_value):
-                    fullfills = False
-                    break
-                if requirement == 'memory' and int(capability) < int(
-                        requirement_value):
-                    fullfills = False
-                    break
-                if requirement == 'gps_coord' and int(
-                        capability) > requirement_value:
-                    fullfills = False
-                    break
-
-            if fullfills:
-                server_list.append(server)
-
-    return server_list
 
 
 def replace_any_to_sid(job_file_path, linecounter, sid):
@@ -512,10 +102,10 @@ def serval_running():
             host=CONFIGURATION['host'],
             port=int(CONFIGURATION['port']),
             user=CONFIGURATION['user'],
-            passwd=CONFIGURATION['passwd']
-        ).keyring.get_identities()
+            passwd=CONFIGURATION['passwd']).keyring.get_identities()
     except requests.exceptions.ConnectionError:
-        LOGGER.critical(' | Serval is not running. Start with \'servald start\'')
+        LOGGER.critical(
+            ' | Serval is not running. Start with \'servald start\'')
         return False
     return True
 
@@ -676,3 +266,507 @@ def parse_jobfile(job_file_path):
 
     job_file.close()
     return jobs
+
+
+def extract_zip(path, extract_path):
+    '''Unzip 'path' to 'extract_path'
+
+    Arguments:
+        path -- Path of the ZIP file
+        extract_path -- Path of the destination
+
+    Returns:
+        A list of filenames containing all extracted files
+    '''
+
+    zipf = zipfile.ZipFile(path, 'r')
+    member_list = zipf.namelist()
+
+    # If the result folder does not exist, create it.
+    if not os.path.exists(extract_path):
+        os.makedirs(extract_path)
+
+    zipf.extractall(extract_path)
+    zipf.close()
+
+    # Prepend the extract_path to all extracted file paths.
+    member_list = [extract_path + x for x in member_list]
+
+    return member_list
+
+
+def make_zip(arg_list, name='tmp_container', subpath_to_remove=''):
+    '''Make a ZIP file containing everything in arg_list
+
+    Arguments:
+        arg_list -- List of files to be ZIP'd
+
+    Keyword Arguments:
+        name -- Name of the resulting ZIP file (default: {'tmp_container'})
+        subpath_to_remove -- Remove subpaths (default: {''})
+
+    Returns:
+        Name of the resulting ZIP file
+    '''
+
+    with zipfile.ZipFile(name + '.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for arg in arg_list:
+            zipf.write(arg, arg.replace(subpath_to_remove, ''))
+    return name + '.zip'
+
+
+def insert_to_line(line, appendix):
+    '''Inserts appendix to line
+
+    Arguments:
+        line -- The line to be changed
+        appendix -- String to inerst into line
+
+    Returns:
+        The changed line
+    '''
+
+    # We assume, that '|' is part of the line.
+    line = line.split('|')
+    line[0] = line[0].strip('\n')
+    line[0] = line[0] + ' ' + appendix
+
+    # if '|' is not available, just return.
+    if len(line) == 1:
+        line[0] = line[0] + '\n'
+        return line[0]
+
+    ret_line = line[0] + '|' + line[1]
+    return ret_line
+
+
+def config_files_present(server=True):
+    '''Check, if all files from conf are present.
+
+    Returns:
+        True, if all files are available, False otherwise
+    '''
+    if server:
+        if not os.path.exists(CONFIGURATION['bins']):
+            LOGGER.critical(' | RPC binaries paht {} does not exist.'.format(
+                CONFIGURATION['bins']))
+            return False
+        if not os.path.exists(CONFIGURATION['rpcs']):
+            LOGGER.critical(' | RPC definition file {} does not exist.'.format(
+                CONFIGURATION['rpcs']))
+            return False
+        if not os.path.exists(CONFIGURATION['capabilites']):
+            LOGGER.critical(' | Capabilities file {} does not exist.'.format(
+                CONFIGURATION['capabilites']))
+            return False
+    if not os.path.exists(CONFIGURATION['location']):
+        LOGGER.critical(' | Location file {} does not exist.'.format(
+            CONFIGURATION['location']))
+        return False
+    return True
+
+
+def pre_exec_checks(config_path, server_checks=False, client_jobfle=None):
+    '''Check if all config files are available, if serval is running and
+    a job file is present
+
+    Arguments:
+        config_path -- Path to the main config file
+
+    Keyword Arguments:
+        server_checks -- If additional server checks should be done
+        (default: {False})
+        client_jobfle -- Path to the client job file (default: {None})
+    '''
+
+    if not read_config(config_path):
+        sys.exit(1)
+    if not serval_running():
+        sys.exit(1)
+    if server_checks and not config_files_present(server=True):
+        sys.exit(1)
+    if not config_files_present(server=False):
+        sys.exit(1)
+    if client_jobfle and not os.path.exists(client_jobfle):
+        LOGGER.critical(' | Can not find job file.')
+        sys.exit(1)
+
+
+def read_config(path):
+    '''Read and parse the main config file
+
+    Arguments:
+        path -- Path to the main config file
+
+    Returns:
+        True, if parsing was successful, False otherwise
+    '''
+
+    try:
+        with open(path, 'r') as rpc_conf:
+            for conf in rpc_conf:
+                conf_list = conf.split('=')
+                CONFIGURATION[conf_list[0].rstrip()] = conf_list[1].rstrip()
+        return True
+
+    except FileNotFoundError:
+        LOGGER.critical(
+            ' | Main config file {} is not available.'.format(path))
+        return False
+
+
+class Server():
+    '''Simple class for representing servers
+    '''
+
+    def __init__(self,
+                 sid,
+                 jobs=None,
+                 gps_coord=None,
+                 cpu_load=None,
+                 memory=None,
+                 disk_space=None,
+                 energy=None):
+        '''Server constructor
+
+        Arguments:
+            sid -- SID of the server
+
+        Keyword Arguments:
+            jobs -- All jobs offered (default: {None})
+            gps_coord -- Postion (x,y) (default: {None})
+            cpu_load -- CPU capability (default: {None})
+            memory -- Available memory (default: {None})
+            disk_space -- Available disk space (default: {None})
+            energy -- Available energy (default: {None})
+        '''
+
+        self.sid = sid
+        self.gps_coord = gps_coord
+        self.cpu_load = float(cpu_load) if cpu_load else None
+        self.memory = float(memory) if memory else None
+        self.disk_space = float(disk_space) if disk_space else None
+        self.energy = float(energy) if energy else None
+        self.jobs = jobs
+        self.rating = 0
+
+
+def rate_server(server, job):
+    quality = 0
+    for requirement in job.filter_dict:
+        capability = getattr(server, requirement)
+
+        # If the server has no restrictions regarding this particular
+        # requirement, it gets the best quality.
+        if capability is None:
+            quality = quality + 1
+            continue
+        else:
+            requirement_value = job.filter_dict[requirement]
+            tmp_quality = requirement_value / capability
+
+        if requirement == 'energy':
+            tmp_quality = tmp_quality * 0.3
+        if requirement == 'cpu_load':
+            tmp_quality = tmp_quality * 0.2
+        if requirement == 'memory':
+            tmp_quality = tmp_quality * 0.1
+        if requirement == 'disk_space':
+            tmp_quality = tmp_quality * 0.1
+
+        quality = quality + tmp_quality
+
+    tmp_quality = (server.gps_coord / 280) * 0.3
+    server.rating = (quality + tmp_quality) / 5
+
+
+def sort_servers(server_list):
+    '''Sort server list to the following key:
+    gps_coord: proximity (closer is better)
+    cpu_load: lower is better
+    memory: more is better
+    disk_space: more is better
+
+    Arguments:
+        server_list -- List of servers
+
+    Returns:
+        Sorted server list
+    '''
+
+    return sorted(
+        server_list,
+        key=lambda x: x.rating)
+
+
+def select_first_server(server_list):
+    '''Select the first server
+
+    Arguments:
+        server_list -- List of servers
+
+    Returns:
+        The first server from the list
+    '''
+
+    return server_list[0]
+
+
+def select_random_server(server_list):
+    '''Select a random server
+
+    Arguments:
+        server_list -- List of servers
+
+    Returns:
+        A random server from the list
+    '''
+
+    return random.choice(server_list)
+
+
+def select_best_server(server_list):
+    '''Select the best server
+
+    Arguments:
+        server_list -- List of servers
+
+    Returns:
+        The best server based on the sorted list returned from
+        'sort_servers'
+    '''
+
+    return sort_servers(server_list)[0]
+
+
+def select_probabilistic_server(server_list):
+    '''Select one of the best servers.
+    Servers are first sorted using 'sort_servers' and then a server
+    is selected using the gamma distribution
+
+    Arguments:
+        server_list -- List of servers
+
+    Returns:
+        One of the best available servers.
+    '''
+
+    sorted_server_list = sort_servers(server_list)
+    index = abs(round(random.standard_normal()))
+    try:
+        return sorted_server_list[index]
+    except IndexError:
+        return sorted_server_list[-1]
+
+
+def select_server(server_list, selection_type=FIRST):
+    '''Server selection API function
+
+    Arguments:
+        server_list -- List of servers
+
+    Keyword Arguments:
+        selection_type -- The method to be used (default: {FIRST})
+
+    Returns:
+        A server from the server_list based on the selection_type
+    '''
+
+    if selection_type == FIRST:
+        return select_first_server(server_list)
+
+    if selection_type == RANDOM:
+        return select_random_server(server_list)
+
+    if selection_type == BEST:
+        return select_best_server(server_list)
+
+    if selection_type == PROB:
+        return select_probabilistic_server(server_list)
+
+
+def parse_available_servers(rhizome, own_sid, originator_sid=None):
+    '''This function iterates through all RPC offers and parses them
+    into servers
+
+    Arguments:
+        rhizome -- Pyserval Rhizome connection
+        own_sid -- SID of the caller of this function
+        originator_sid -- SID of the originator a particular call.
+
+    Returns:
+        A list containing all found servers excluding self and originator
+    '''
+
+    # Get all bundles and check if any available. If not, just return.
+    bundles = rhizome.get_bundlelist()
+    if not bundles:
+        return None
+
+    server_list = []
+    for bundle in bundles:
+        # We are only intereseted in RPC offers.
+        if not bundle.manifest.service == OFFER:
+            continue
+
+        # Make sure, that we can not call ourself.
+        if bundle.manifest.sender == own_sid:
+            continue
+
+        # Do not call a procedure on the node which wants it to be offloaded...
+        if bundle.manifest.sender == originator_sid:
+            continue
+
+        jobs = []
+        capabilities = {}
+
+        # We found an offer from a remote server. Start parsing.
+        offers = rhizome.get_payload(bundle).decode('utf-8').split('\n')
+        for offer in offers:
+            # There are two lines containing :, which introduce new
+            # sections of the file. These can be skipped.
+            if ':' in offer:
+                continue
+
+            # If = is not in the line, than we have a procedure to be parsed
+            if '=' not in offer:
+                jobname = offer.split(' ')[0]
+                jobarguments = offer.split(' ')[1:]
+                jobs.append(
+                    Job(server=bundle.manifest.name,
+                        procedure=jobname,
+                        arguments=jobarguments))
+            else:
+                # If there is a =, then we have a capability.
+                _type, _value = offer.split('=')
+                if _type == 'gps_coord':
+                    # Location is a special case. We need to compute our
+                    # own distance to the server distance, which will be stored
+                    x1, y1 = _value.split(',')
+                    x2 = y2 = None
+                    with open(CONFIGURATION['location']) as coord_file:
+                        x2, y2 = coord_file.readline().split(' ')
+                        _value = math.sqrt((float(x1) - float(x2))**2 +
+                                           (float(y1) - float(y2))**2)
+
+                capabilities[_type] = _value
+
+        # After parsing, create a Server object and store it in the result list
+        server_list.append(
+            Server(bundle.manifest.name, jobs=jobs, **capabilities))
+
+    return server_list
+
+
+def find_available_servers(servers, job):
+    '''Function for finding server, which is offers the procedure and
+    is able to execute it
+
+    Arguments:
+        servers -- List of available servers
+        job -- The job to be executed
+
+    Returns:
+        List of servers, which offer and are able to execute the procedure.
+    '''
+
+    server_list = []
+    for server in servers:
+        # If the job has no capabilities, just execute it.
+        if not job.filter_dict:
+            server_list.append(server)
+            continue
+
+        for offered_job in server.jobs:
+            # This is not the procedure we are looking for, so skip this.
+            if offered_job.procedure != job.procedure or len(
+                    offered_job.arguments) != len(job.arguments):
+                continue
+
+            # If we found a server offering the procedure, check if it is
+            # capable to execute it.
+            fullfills = True
+            for requirement in job.filter_dict:
+                capability = getattr(server, requirement)
+                # If the server has no restrictions regarding this particular
+                # requirement, just add the server to the result list.
+                if not capability:
+                    server_list.append(server)
+                    continue
+
+                requirement_value = job.filter_dict[requirement]
+
+                if requirement == 'energy' and int(capability) > int(
+                        requirement_value):
+                    fullfills = False
+                    break
+                if requirement == 'cpu_load' and int(capability) > int(
+                        requirement_value):
+                    fullfills = False
+                    break
+                if requirement == 'disk_space' and int(capability) < int(
+                        requirement_value):
+                    fullfills = False
+                    break
+                if requirement == 'memory' and int(capability) < int(
+                        requirement_value):
+                    fullfills = False
+                    break
+                if requirement == 'gps_coord' and int(
+                        capability) > requirement_value:
+                    fullfills = False
+                    break
+
+            if fullfills:
+                server_list.append(server)
+
+    return server_list
+
+
+def lookup_server(rhizome, default_sid, originator, job, job_id,
+                  job_file_path):
+    for i in range(10):
+        # First, get all available offers from the Rhizome store.
+        servers = parse_available_servers(rhizome, default_sid, originator)
+        if not servers:
+            LOGGER.warn(
+                '{} | Could not find any servers for the job in try {}/10'.
+                format(job_id, i))
+            time.sleep(1)
+            continue
+
+        LOGGER.info(
+            '{} | Found {} offers. Searching possible server.'
+            .format(job_id, len(servers)))
+
+        # Secondly, get servers offering the desired procedure.
+        servers = find_available_servers(servers, job)
+        if not servers:
+            LOGGER.warn(
+                '{} | Could not find any capable servers for the job in try {}/10'.
+                format(job_id, i))
+            time.sleep(1)
+            continue
+
+        break
+
+    if not servers:
+        reason = '{} | Could not find any servers for the job'.format(job_id)
+        LOGGER.critical(" | " + reason)
+        return reason
+
+    LOGGER.info(
+        '{} | Found {} servers. Getting server based on {} algorithm.'
+        .format(job_id, len(servers), CONFIGURATION['server']))
+
+    # If we have a list of potential servers, get the server based on
+    # the selection algorithm as in the configure script.
+    rated_servers = [rate_server(server, job) for server in servers]
+    job.server = select_server(rated_servers, CONFIGURATION['server']).sid
+
+    # Now everything is done. Set the SID to the job file and continue
+    # with processing.
+    replace_any_to_sid(job_file_path, job.line, job.server)
+
+    LOGGER.info('{} | Using server {} for the job.'.format(
+        job_id, job.server))

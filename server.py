@@ -496,12 +496,12 @@ def server_handle_call(potential_call):
         # job. This is about the same process as in the client.
         if possible_next_job.server == 'any':
             LOGGER.info('{} | Searching next server.'.format(job_id))
-            servers = utilities.parse_available_servers(
-                SERVAL.rhizome, SERVER_DEFAULT_SID,
-                potential_call.manifest.originator)
-            if not servers:
-                reason = 'Could not find any suitable servers. Aborting.'
-                LOGGER.critical(" | " + reason)
+            reason = utilities.lookup_server(
+                SERVAL.rhizome, server_cleanup_store,
+                potential_call.manifest.originator, possible_next_job, job_id,
+                job_file_path)
+
+            if reason:
                 return_error(
                     potential_call,
                     reason,
@@ -509,28 +509,6 @@ def server_handle_call(potential_call):
                     file_list=file_list,
                     zip_file_name=zip_file_base_path)
                 return
-
-            servers = utilities.find_available_servers(servers,
-                                                       possible_next_job)
-            if not servers:
-                reason = 'Could not find any suitable servers. Aborting.'
-                LOGGER.critical(" | " + reason)
-                return_error(
-                    potential_call,
-                    reason,
-                    client_sid=potential_call.manifest.originator,
-                    file_list=file_list,
-                    zip_file_name=zip_file_base_path)
-                return
-
-            possible_next_job.server = utilities.select_server(
-                servers, CONFIGURATION['server']).sid
-
-            utilities.replace_any_to_sid(job_file_path, possible_next_job.line,
-                                         possible_next_job.server)
-
-            LOGGER.info('{} | Found server {}'.format(
-                job_id, possible_next_job.server))
 
         # Done. Make the payload containing all required files, read the
         # payload ...

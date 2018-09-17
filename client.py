@@ -57,8 +57,8 @@ def client_call(job_file_path):
     first_job = jobs.joblist[0]
 
     hash_base_string = '{}{}{:.9f}'.format(first_job.procedure,
-                                         client_default_sid,
-                                         time.time())
+                                           client_default_sid,
+                                           time.time())
     encoded_hash_base_string = hash_base_string.encode('utf-8')
 
     job_id = hashlib.sha256(encoded_hash_base_string).hexdigest()[:8]
@@ -71,56 +71,15 @@ def client_call(job_file_path):
     # offers this procedure.
     if first_job.server == 'any':
         LOGGER.info(
-            '{} | The address is any, searching for server.'
-            .format(job_id))
+                '{} | The address is any, searching for server.'
+                .format(job_id))
 
-        for i in range(10):
-            # First, get all available offers from the Rhizome store.
-            servers = utilities.parse_available_servers(rhizome,
-                                                        client_default_sid)
-            if not servers:
-                LOGGER.warn(
-                    '{} | Could not find any servers for the job in try {}/10'.
-                    format(job_id, i))
-                time.sleep(1)
-                continue
-
-            LOGGER.info(
-                '{} | Found {} offers. Searching possible server.'
-                .format(job_id, len(servers)))
-
-            # Secondly, get servers offering the desired procedure.
-            servers = utilities.find_available_servers(servers, first_job)
-            if not servers:
-                LOGGER.warn(
-                    '{} | Could not find any capable servers for the job in try {}/10'.
-                    format(job_id, i))
-                time.sleep(1)
-                continue
-
-            break
-
-        if not servers:
-            LOGGER.critical(
-                '{} | Could not find any servers for the job'.format(job_id))
-            return
-
-        LOGGER.info(
-            '{} | Found {} servers. Getting server based on {} algorithm.'
-            .format(job_id, len(servers), CONFIGURATION['server']))
-
-        # If we have a list of potential servers, get the server based on
-        # the selection algorithm as in the configure script.
-        first_job.server = utilities.select_server(servers,
-                                                   CONFIGURATION['server']).sid
-
-        # Now everything is done. Set the SID to the job file and continue
-        # with processing.
-        utilities.replace_any_to_sid(job_file_path, first_job.line,
-                                     first_job.server)
-
-        LOGGER.info('{} | Using server {} for the fist job.'.format(
-            job_id, first_job.server))
+        utilities.lookup_server(rhizome,
+                                client_default_sid,
+                                client_default_sid,
+                                first_job,
+                                job_id,
+                                job_file_path)
 
     # All involved files in a call should be uniquely named.
     # Thus, we use the job id, which is a hash of
