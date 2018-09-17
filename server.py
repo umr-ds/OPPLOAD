@@ -144,6 +144,23 @@ def get_capabilities(rpc_caps, location):
     return (count, capabilities)
 
 
+def update_capability(capability, value):
+    read_caps = None
+    updated_caps = []
+    with open(utilities.CONFIGURATION['capabilites'], 'r') as caps:
+        read_caps = caps.readlines()
+        for cap in read_caps:
+            cap_key, cap_value = cap.split('=')
+            if cap_key != capability:
+                updated_caps.append(cap)
+                continue
+            updated_caps.append('{}={}\n'.format(cap_key, value))
+
+    with open(utilities.CONFIGURATION['capabilites'], 'w') as f:
+        for item in updated_caps:
+            f.write(item)
+
+
 def server_offering_procedure(job):
     '''Function for checking if the server is offering the procedure.
 
@@ -460,6 +477,7 @@ def server_handle_call(potential_call):
     code, result = server_execute_procedure(possible_job,
                                             zip_file_base_path + '/')
     result_decoded = result.decode('utf-8')
+    update_capability('energy', job.filter_dict['energy'])
 
     # Here we need to prepare the job for the next hop.
     if possible_next_job is not None:
