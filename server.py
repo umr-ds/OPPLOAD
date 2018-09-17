@@ -52,10 +52,10 @@ def server_publish_procedures():
     update_published_thread.start()
 
     # The the offered procedures and capabilities for publishing.
-    opc, offered_procedures = get_offered_procedures(
+    offered_procedures = get_offered_procedures(
         utilities.CONFIGURATION['rpcs'])
-    cc, capabilities = get_capabilities(utilities.CONFIGURATION['capabilites'],
-                                        utilities.CONFIGURATION['location'])
+    capabilities = get_capabilities(utilities.CONFIGURATION['capabilites'],
+                                    utilities.CONFIGURATION['location'])
 
     payload = ''
     # To not run this code multiple times at the same time, we use a LOCK.
@@ -70,13 +70,13 @@ def server_publish_procedures():
                 break
 
         # Put all offered procedures to the payload
-        payload = 'procedures: {}\n'.format(opc)
+        payload = 'procedures: {}\n'.format(len(offered_procedures))
         for procedure in offered_procedures:
             procedure_str = str(procedure) + '\n'
             payload = payload + procedure_str
 
         # Put all capabilities to the payload
-        payload = payload + 'capabilities: {}\n'.format(cc)
+        payload = payload + 'capabilities: {}\n'.format(len(capabilities))
         for capability in capabilities:
             payload = payload + capability
 
@@ -104,7 +104,6 @@ def get_offered_procedures(rpc_defs):
     '''
 
     offered_procedures = set()
-    count = 0
     with open(rpc_defs, 'r') as conf_file:
         for procedure_definition in conf_file:
             # RPC defs are stored as '<NAME> <ARG1> ...'
@@ -112,9 +111,8 @@ def get_offered_procedures(rpc_defs):
             name = procedure_definition_list[0]
             args = procedure_definition_list[1:]
             offered_procedures.add(Job(procedure=name, arguments=args))
-            count = count + 1
 
-    return (count, offered_procedures)
+    return offered_procedures
 
 
 def get_capabilities(rpc_caps, location):
@@ -130,18 +128,15 @@ def get_capabilities(rpc_caps, location):
     '''
 
     capabilities = set()
-    count = 0
     with open(rpc_caps, 'r') as conf_file:
         for capability in conf_file:
             capabilities.add(capability)
-            count = count + 1
 
     with open(location, 'r') as location_file:
         coords = location_file.readline().split(' ')
         capabilities.add('gps_coord={},{}\n'.format(coords[0], coords[1]))
-        count = count + 1
 
-    return (count, capabilities)
+    return capabilities
 
 
 def update_capability(capability, value):
@@ -175,8 +170,7 @@ def server_offering_procedure(job):
 
     with LOCK:
         # The the offered procedures
-        _, offered_jobs = get_offered_procedures(
-            utilities.CONFIGURATION['rpcs'])
+        offered_jobs = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
 
         for offered_job in offered_jobs:
             if offered_job.procedure != job.procedure:
@@ -216,7 +210,7 @@ def server_execute_procedure(job, env_path):
     bin_path = utilities.CONFIGURATION['bins'] + '/%s %s'
 
     # We have to rewrite some paths, so we need the offered jobs...
-    _, offered_jobs = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
+    offered_jobs = get_offered_procedures(utilities.CONFIGURATION['rpcs'])
     offered_job = [
         _job for _job in offered_jobs if _job.procedure == job.procedure and
         len(_job.arguments) == len(job.arguments)
@@ -274,31 +268,18 @@ def is_capable(job):
         return True
 
     # Get the server capabilities
-    cc, capabilities = get_capabilities(utilities.CONFIGURATION['capabilites'],
-                                        utilities.CONFIGURATION['location'])
+    capabilities = get_capabilities(utilities.CONFIGURATION['capabilites'],
+                                    utilities.CONFIGURATION['location'])
 
-    for requirement in job.filter_dict:
+    for requirement, requirement_value in job.filter_dict.items():
         # Get the capability we are looking for
         capability_line = [
             line for line in capabilities if requirement in line
         ]
 
-        capability_value = capability_line.split('=')[1].rstrip()
-        requirement_value = job.filter_dict[requirement]
+        capability_value = capability_line[0].split('=')[1].rstrip()
 
-        # Now check every possible capability and return False if
-        # server is not able to fullfil.
-        if requirement == 'cpu_load' and int(capability_value) > int(
-                requirement_value):
-            return False
-        if requirement == 'disk_space' and int(capability_value) < int(
-                requirement_value):
-            return False
-        if requirement == 'memory' and int(capability_value) < int(
-                requirement_value):
-            return False
-        if requirement == 'gps_coord' and int(capability_value) > int(
-                requirement_value):
+        if float(capability_value) < float(requirement_value):
             return False
 
     return True
@@ -427,7 +408,8 @@ def server_handle_call(potential_call):
             break
 
     # Do a check, if the procedure is offered and inform the client if not.
-    LOGGER.info('{} | Checking if offering {}'.format(job_id, job.procedure))
+    LOGGER.info('{} | Checking if offering {}'.format(job_id,
+                                                      possible_job.procedure))
     if possible_job is None or not server_offering_procedure(possible_job):
         reason = 'Server is not offering this procedure.'
         LOGGER.critical(reason)
@@ -442,7 +424,7 @@ def server_handle_call(potential_call):
     # Check, if the server is capable to execute the procedure and inform
     # the client if not.
     LOGGER.info('{} | Checking if capable to execute {}'.format(
-        job_id, job.procedure))
+        job_id, possible_job.procedure))
     if not is_capable(possible_job):
         reason = 'Server is not capable to execute the job.'
         LOGGER.critical(reason)
@@ -477,12 +459,23 @@ def server_handle_call(potential_call):
     code, result = server_execute_procedure(possible_job,
                                             zip_file_base_path + '/')
     result_decoded = result.decode('utf-8')
-    update_capability('energy', job.filter_dict['energy'])
+
+    capabilities = get_capabilities(utilities.CONFIGURATION['capabilites'],
+                                    utilities.CONFIGURATION['location'])
+
+    capability_line = [
+            line for line in capabilities if 'energy' in line
+        ]
+
+    capability_value = float(capability_line[0].split('=')[1].rstrip())
+
+    update_capability(
+        'energy', capability_value - float(possible_job.filter_dict['energy']))
 
     # Here we need to prepare the job for the next hop.
     if possible_next_job is not None:
         LOGGER.info('{} | -Runtime- Preparing job {} for next hop.'.format(
-            job_id, job.procedure))
+            job_id, possible_job.procedure))
         # After executing the job, we have to update the job_file.
         # Therefore, we first read it.
         job_file = open(job_file_path, 'r+')
@@ -562,7 +555,7 @@ def server_handle_call(potential_call):
 
     else:
         LOGGER.info('{} | -Runtime- Preparing result from {}.'.format(
-            job_id, job.procedure))
+            job_id, possible_job.procedure))
         # There is no next hop, return the result to the client by
         # building and reading the payload...
         payload_path = utilities.make_zip(

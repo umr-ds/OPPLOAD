@@ -74,12 +74,12 @@ def client_call(job_file_path):
                 '{} | The address is any, searching for server.'
                 .format(job_id))
 
-        utilities.lookup_server(rhizome,
-                                client_default_sid,
-                                client_default_sid,
-                                first_job,
-                                job_id,
-                                job_file_path)
+        reason = utilities.lookup_server(rhizome, client_default_sid,
+                                         client_default_sid, first_job, job_id,
+                                         job_file_path)
+
+        if reason:
+            return
 
     # All involved files in a call should be uniquely named.
     # Thus, we use the job id, which is a hash of

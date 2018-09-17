@@ -208,10 +208,15 @@ def parse_jobfile(job_file_path):
         line = line.strip('\n')
         # We also can have filters per step, which will override global filters
         # for this particular step. We keep them for later.
-        possible_filters = line.split('|')
+        possible_job = None
+        possible_filters = None
+        try:
+            possible_job, possible_filters = line.split('|')
+        except ValueError:
+            pass
 
         # Take the first part of the line (before the '|') and parse it.
-        job_parts = possible_filters[0].split(' ')
+        job_parts = possible_job.split(' ')
         if '' in job_parts:
             job_parts = [arg for arg in job_parts if arg != '']
 
@@ -237,9 +242,9 @@ def parse_jobfile(job_file_path):
 
         # Done. Now let's create a job.
         # Finally, add local filters, if available.
-        if len(possible_filters) > 1:
+        if possible_filters:
             filter_dict = {}
-            possible_filters = possible_filters[1].split(' ')
+            possible_filters = possible_filters.split(' ')
             if '' in possible_filters:
                 possible_filters = [
                     arg for arg in possible_filters if arg != ''
@@ -458,11 +463,11 @@ def rate_server(server, job):
 
         # If the server has no restrictions regarding this particular
         # requirement, it gets the best quality.
+        tmp_quality = None
         if capability is None:
-            quality = quality + 1
-            continue
+            tmp_quality = 1
         else:
-            requirement_value = job.filter_dict[requirement]
+            requirement_value = float(job.filter_dict[requirement])
             tmp_quality = requirement_value / capability
 
         if requirement == 'energy':
@@ -477,7 +482,8 @@ def rate_server(server, job):
         quality = quality + tmp_quality
 
     tmp_quality = (server.gps_coord / 280) * 0.3
-    server.rating = (quality + tmp_quality) / 5
+    server.rating = 1 - (quality + tmp_quality)
+    return server
 
 
 def sort_servers(server_list):
@@ -553,6 +559,7 @@ def select_probabilistic_server(server_list):
 
     sorted_server_list = sort_servers(server_list)
     index = abs(round(random.standard_normal()))
+    ret = None
     try:
         return sorted_server_list[index]
     except IndexError:
@@ -620,8 +627,6 @@ def parse_available_servers(rhizome, own_sid, originator_sid=None):
         # A offer has to be seen within the last 120 seconds.
         bundle_version = int(bundle.manifest.version)
         time_in_store = int(time.time() * 1000) - bundle_version
-        LOGGER.debug('Verion: {}, time in store: {}'.format(
-            bundle_version, time_in_store))
         if time_in_store > 120000:
             continue
 
@@ -633,7 +638,7 @@ def parse_available_servers(rhizome, own_sid, originator_sid=None):
         for offer in offers:
             # There are two lines containing :, which introduce new
             # sections of the file. These can be skipped.
-            if ':' in offer:
+            if ':' in offer or offer == '':
                 continue
 
             # If = is not in the line, than we have a procedure to be parsed
@@ -660,8 +665,8 @@ def parse_available_servers(rhizome, own_sid, originator_sid=None):
                 capabilities[_type] = _value
 
         # After parsing, create a Server object and store it in the result list
-        server_list.append(
-            Server(bundle.manifest.name, jobs=jobs, **capabilities))
+        s = Server(bundle.manifest.name, jobs=jobs, **capabilities)
+        server_list.append(s)
 
     return server_list
 
@@ -698,30 +703,13 @@ def find_available_servers(servers, job):
                 capability = getattr(server, requirement)
                 # If the server has no restrictions regarding this particular
                 # requirement, just add the server to the result list.
-                if not capability:
+                if capability is None:
                     server_list.append(server)
                     continue
 
-                requirement_value = job.filter_dict[requirement]
+                requirement_value = float(job.filter_dict[requirement])
 
-                if requirement == 'energy' and int(capability) > int(
-                        requirement_value):
-                    fullfills = False
-                    break
-                if requirement == 'cpu_load' and int(capability) > int(
-                        requirement_value):
-                    fullfills = False
-                    break
-                if requirement == 'disk_space' and int(capability) < int(
-                        requirement_value):
-                    fullfills = False
-                    break
-                if requirement == 'memory' and int(capability) < int(
-                        requirement_value):
-                    fullfills = False
-                    break
-                if requirement == 'gps_coord' and int(
-                        capability) > requirement_value:
+                if capability < requirement_value:
                     fullfills = False
                     break
 

@@ -48,7 +48,8 @@ class Jobfile:
             filter_dict -- Optional filters for this job (default: {{}})
         '''
 
-        self.joblist.append(Job(server, procedure, args, status, counter))
+        self.joblist.append(
+            Job(server, procedure, args, status, counter, filter_dict))
 
 
 class Job:
@@ -75,7 +76,7 @@ class Job:
 
         self.server = server
         self.procedure = procedure
-        self.arguments = arguments
+        self.arguments = list(map(lambda x: x.strip(), arguments))
         self.line = line
         self.filter_dict = filter_dict
         if status == 'OPEN':
@@ -85,10 +86,8 @@ class Job:
         else:
             status = Status.ERROR
 
-        self.arguments = list(map(lambda x: x.strip(), self.arguments))
-
     def __str__(self):
-        return '%s %s' % (self.procedure, ' '.join(self.arguments))
+        return '{} {}'.format(self.procedure, ' '.join(self.arguments))
 
 
 class Status(Enum):
