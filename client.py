@@ -124,7 +124,6 @@ def client_call(job_file_path):
     # Now we wait for the result.
     token = call_bundle.bundle_id
     result_received = False
-    total_wait_time = 0
     while not result_received:
         bundles = rhizome.get_bundlelist()
 
@@ -147,11 +146,6 @@ def client_call(job_file_path):
             try:
                 potential_result = rhizome.get_bundle(bundle.bundle_id)
             except DecryptionError:
-                continue
-
-            # Although it is a RPC bundle for this client, it is not
-            # the right result for the procedure.
-            if not potential_result.manifest.name == first_job.procedure:
                 continue
 
             # Yay, ACK received.
@@ -210,5 +204,4 @@ def client_call(job_file_path):
 
         # After the for loop, remember the recent bundle id.
         token = bundles[0].bundle_id
-        total_wait_time = total_wait_time + 1
         time.sleep(1)
