@@ -293,7 +293,6 @@ def is_capable(job):
 
 def return_error(call_bundle,
                  reason,
-                 client_sid=None,
                  file_list=[],
                  zip_file_name=None):
     '''This is a generic error handling function. Whenever an errror is
@@ -305,9 +304,6 @@ def return_error(call_bundle,
         reason -- The reason of the error
 
     Keyword Arguments:
-        client_sid -- The SID of the client. Since a server can be any hop,
-        it is possible that the call_bundle sender is not the client.
-        (default: {None})
         file_list -- Files, which should be sent to the client (default: {[]})
         zip_file_name -- The name of the ZIP file created (default: {None})
     '''
@@ -326,17 +322,25 @@ def return_error(call_bundle,
         payload = open(payload_path, 'r')
 
     # Simply insert the error bundle containing all relevant data
-    SERVAL.rhizome.new_bundle(
+    error_bundle = SERVAL.rhizome.new_bundle(
         name=call_bundle.manifest.name,
         payload=payload.read() if payload else '',
         service=RPC,
-        recipient=client_sid,
+        recipient=call_bundle.manifest.originator,
         custom_manifest={
             'type': ERROR,
             'reason': reason,
             'originator': call_bundle.manifest.originator,
             'rpcid': call_bundle.manifest.rpcid
         })
+    LOGGER.debug('Returned Error with {} to {}'.format(
+        error_bundle.bundle_id, call_bundle.manifest.originator))
+
+    id_to_store = error_bundle.bundle_id
+    if call_bundle.bundle_id in CLEANUP_BUNDLES:
+        CLEANUP_BUNDLES[call_bundle.bundle_id].append(id_to_store)
+    else:
+        CLEANUP_BUNDLES[call_bundle.bundle_id] = [id_to_store]
 
 
 def server_handle_call(potential_call):
@@ -383,7 +387,7 @@ def server_handle_call(potential_call):
             potential_call,
             reason,
             file_list=[zip_file_base_path + '_step.zip'],
-            client_sid=potential_call.manifest.originator)
+            zip_file_name=zip_file_base_path + '_step.zip')
         return
 
     # We could not find any jobs in the ZIP, so abort and inform the client.
@@ -393,7 +397,6 @@ def server_handle_call(potential_call):
         return_error(
             potential_call,
             reason,
-            client_sid=potential_call.manifest.originator,
             file_list=file_list,
             zip_file_name=zip_file_base_path)
         return
@@ -422,7 +425,6 @@ def server_handle_call(potential_call):
         return_error(
             potential_call,
             reason,
-            client_sid=potential_call.manifest.originator,
             file_list=file_list,
             zip_file_name=zip_file_base_path)
         return
@@ -437,7 +439,6 @@ def server_handle_call(potential_call):
         return_error(
             potential_call,
             reason,
-            client_sid=potential_call.manifest.originator,
             file_list=file_list,
             zip_file_name=zip_file_base_path)
         return
@@ -523,7 +524,6 @@ def server_handle_call(potential_call):
                 return_error(
                     potential_call,
                     reason,
-                    client_sid=potential_call.manifest.originator,
                     file_list=file_list,
                     zip_file_name=zip_file_base_path)
                 return
