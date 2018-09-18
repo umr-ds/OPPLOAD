@@ -357,11 +357,17 @@ def server_handle_call(potential_call):
 
     # All involved files in a call should be uniquely named.
     # Thus, we use the procedure name, the server SID and a timestamp.
+    exec_time = int(time.time() * 1000)
+
     job_id = potential_call.manifest.rpcid
-    zip_file_base_path = potential_call.manifest.rpcid
+    zip_file_base_path = '{}_{}'.format(job_id, exec_time)
+
+    zip_file_step_path = '{}_step.zip'.format(zip_file_base_path)
+    zip_file_result_step_path = '{}_result_step'.format(zip_file_base_path)
+    zip_file_result_path = '{}_result'.format(zip_file_base_path)
 
     # Download the payload from the Rhizome store
-    with open(zip_file_base_path + '_step.zip', 'wb') as zip_file:
+    with open(zip_file_step_path, 'wb') as zip_file:
         zip_file.write(potential_call.payload)
 
     jobs = None
@@ -369,8 +375,8 @@ def server_handle_call(potential_call):
     file_list = None
 
     # If we have a valid ZIP file, we extract it and parse the job file.
-    if zipfile.is_zipfile(zip_file_base_path + '_step.zip'):
-        file_list = utilities.extract_zip(zip_file_base_path + '_step.zip',
+    if zipfile.is_zipfile(zip_file_step_path):
+        file_list = utilities.extract_zip(zip_file_step_path,
                                           zip_file_base_path + '/')
 
         # Find the job file and parse it.
@@ -381,13 +387,14 @@ def server_handle_call(potential_call):
     else:
         # We have not found a valid ZIP file, so abort here and inform
         # the client.
-        reason = '{} | {} is not a valid ZIP file.'.format(job_id, zip_file_base_path)
+        reason = '{} | {} is not a valid ZIP file.'.format(
+            job_id, zip_file_step_path)
         LOGGER.critical(reason)
         return_error(
             potential_call,
             reason,
-            file_list=[zip_file_base_path + '_step.zip'],
-            zip_file_name=zip_file_base_path + '_step.zip')
+            file_list=[zip_file_step_path],
+            zip_file_name=zip_file_step_path)
         return
 
     # We could not find any jobs in the ZIP, so abort and inform the client.
@@ -532,7 +539,7 @@ def server_handle_call(potential_call):
         # payload ...
         payload_path = utilities.make_zip(
             file_list,
-            name=zip_file_base_path + '_step_result',
+            name=zip_file_result_step_path,
             subpath_to_remove=zip_file_base_path + '/')
         payload = open(payload_path, 'rb')
 
@@ -567,7 +574,7 @@ def server_handle_call(potential_call):
         # building and reading the payload...
         payload_path = utilities.make_zip(
             file_list,
-            name=zip_file_base_path + '_result',
+            name=zip_file_result_path,
             subpath_to_remove=zip_file_base_path + '/')
         payload = open(payload_path, 'rb')
 
