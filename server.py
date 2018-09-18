@@ -516,7 +516,7 @@ def server_handle_call(potential_call):
         if possible_next_job.server == 'any':
             LOGGER.info('{} | Searching next server.'.format(job_id))
             reason = utilities.lookup_server(
-                SERVAL.rhizome, server_cleanup_store,
+                SERVAL.rhizome, SERVER_DEFAULT_SID,
                 potential_call.manifest.originator, possible_next_job, job_id,
                 job_file_path)
 
