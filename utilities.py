@@ -480,7 +480,7 @@ def rate_server(server, job):
 
         quality = quality + tmp_quality
 
-    server.rating = quality + ((server.gps_coord / 280) * 3)
+    server.rating = quality + ((280 / server.gps_coord) * 3)
     return server
 
 
