@@ -458,40 +458,35 @@ class Server():
 
 def rate_server(server, job):
     quality = 0
-    for requirement in job.filter_dict:
-        capability = getattr(server, requirement)
+    for requirement_name, requirement in job.filter_dict.items():
+        capability = getattr(server, requirement_name)
 
         # If the server has no restrictions regarding this particular
         # requirement, it gets the best quality.
         tmp_quality = None
         if capability is None:
-            tmp_quality = 1
+            tmp_quality = 0
         else:
-            requirement_value = float(job.filter_dict[requirement])
-            tmp_quality = requirement_value / capability
+            tmp_quality = capability / float(requirement)
 
         if requirement == 'energy':
-            tmp_quality = tmp_quality * 0.3
+            tmp_quality = tmp_quality * 3
         if requirement == 'cpu_load':
-            tmp_quality = tmp_quality * 0.2
+            tmp_quality = tmp_quality * 2
         if requirement == 'memory':
-            tmp_quality = tmp_quality * 0.1
+            tmp_quality = tmp_quality * 1
         if requirement == 'disk_space':
-            tmp_quality = tmp_quality * 0.1
+            tmp_quality = tmp_quality * 1
 
         quality = quality + tmp_quality
 
-    tmp_quality = (server.gps_coord / 280) * 0.3
-    server.rating = 1 - (quality + tmp_quality)
+    server.rating = quality + ((server.gps_coord / 280) * 3)
     return server
 
 
 def sort_servers(server_list):
-    '''Sort server list to the following key:
-    gps_coord: proximity (closer is better)
-    cpu_load: lower is better
-    memory: more is better
-    disk_space: more is better
+    '''Sort server list based on the rating, higher is better, thus
+    sort order is reversed.
 
     Arguments:
         server_list -- List of servers
@@ -502,7 +497,8 @@ def sort_servers(server_list):
 
     return sorted(
         server_list,
-        key=lambda x: x.rating)
+        key=lambda x: x.rating,
+        reverse=True)
 
 
 def select_first_server(server_list):
