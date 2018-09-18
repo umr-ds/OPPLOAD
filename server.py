@@ -36,6 +36,17 @@ CLEANUP_BUNDLES = {}
 SERVER_DEFAULT_SID = None
 
 
+def server_publish_procedures_thread():
+    # Start a thread containing this function and execute it every
+    # periodically in background.
+    update_published_thread = threading.Timer(
+        30, server_publish_procedures_thread)
+    update_published_thread.daemon = True
+    update_published_thread.start()
+
+    server_publish_procedures()
+
+
 def server_publish_procedures():
     '''This function publishes offered procedures and capabilities
     periodically
@@ -45,11 +56,6 @@ def server_publish_procedures():
     global LOCK
     global SERVER_DEFAULT_SID
 
-    # Start a thread containing this function and execute it every
-    # periodically in background.
-    update_published_thread = threading.Timer(30, server_publish_procedures)
-    update_published_thread.daemon = True
-    update_published_thread.start()
 
     # The the offered procedures and capabilities for publishing.
     offered_procedures = get_offered_procedures(
@@ -471,6 +477,7 @@ def server_handle_call(potential_call):
 
     update_capability(
         'energy', capability_value - float(possible_job.filter_dict['energy']))
+    server_publish_procedures()
 
     # Here we need to prepare the job for the next hop.
     if possible_next_job is not None:
@@ -653,7 +660,7 @@ def server_listen(queue):
     # At this point we can publish all offered procedures and capabilities.
     # The publish function is executed once at startup and then periodically.
     LOGGER.info(' | Publishing procedures and capabilities.')
-    server_publish_procedures()
+    server_publish_procedures_thread()
 
     all_bundles = rhizome.get_bundlelist()
     token = all_bundles[0].bundle_id
