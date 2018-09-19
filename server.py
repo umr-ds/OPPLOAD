@@ -442,7 +442,7 @@ def server_handle_call(potential_call):
         job_id, possible_job.procedure))
     if not is_capable(possible_job):
         reason = 'Server is not capable to execute the job.'
-        LOGGER.critical(reason)
+        LOGGER.critical('{} | {}'.format(job_id, reason))
         return_error(
             potential_call,
             reason,
