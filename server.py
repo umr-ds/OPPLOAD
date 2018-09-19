@@ -293,7 +293,7 @@ def is_capable(job):
 
 def return_error(call_bundle,
                  reason,
-                 file_list=[],
+                 file_list=None,
                  zip_file_name=None):
     '''This is a generic error handling function. Whenever an errror is
     encountert, this function will be used to inform the client about
@@ -308,23 +308,23 @@ def return_error(call_bundle,
         zip_file_name -- The name of the ZIP file created (default: {None})
     '''
 
-    payload_path = None
-    payload = None
+    LOGGER.debug('####### {}, {}, {}, {}'.format(call_bundle.bundle_id, reason, file_list, zip_file_name))
 
     # If files should be returned to the client, create a ZIP and open
     # the ZIP file.
-    if file_list:
-        payload_path = utilities.make_zip(
-            file_list,
-            name=zip_file_name + '_error.zip',
-            subpath_to_remove=zip_file_name)
+    payload_path = utilities.make_zip(
+        file_list,
+        name=zip_file_name + '_error.zip',
+        subpath_to_remove=zip_file_name)
 
-        payload = open(payload_path, 'r')
+    payload = open(payload_path, 'rb')
+
+    LOGGER.debug('####### {}, {},'.format(payload_path, payload))
 
     # Simply insert the error bundle containing all relevant data
     error_bundle = SERVAL.rhizome.new_bundle(
         name=call_bundle.manifest.name,
-        payload=payload.read() if payload else '',
+        payload=payload.read(),
         service=RPC,
         recipient=call_bundle.manifest.originator,
         custom_manifest={

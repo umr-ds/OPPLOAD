@@ -187,19 +187,30 @@ def client_call(job_file_path):
                 break
 
             # One of the servers had an error, so see what is going on.
-            if potential_result.manifest.type == ERROR:
+            if (potential_result.manifest.type == ERROR
+                    and potential_result.manifest.rpcid == job_id):
+
+                result_path = zip_file_base_path + '_error.zip'
+
+                # Download the payload from the Rhizome store and
+                # write it to the mentioned ZIP file
+                with open(result_path, 'wb') as zip_file:
+                    zip_file.write(potential_result.payload)
+                LOGGER.info(
+                    '{} | Download is done. Cleaning up store.'.format(job_id))
+
                 call_bundle.refresh()
                 call_bundle.manifest.type = CLEANUP
                 call_bundle.payload = ''
                 call_bundle.update()
                 result_received = True
+
                 LOGGER.warn(
-                    '{} | -End- Received error \'{}\' from {} for call {}. See {} for more information'
-                    .format(job_id,
-                            potential_result.manifest.reason,
-                            potential_result.manifest.sender,
-                            potential_result.manifest.name,
-                            result_path))
+                    u'{} | -End- Received error \'{}\' for job {}.'
+                    .format(
+                        job_id,
+                        potential_result.manifest.reason,
+                        potential_result.manifest.name))
                 break
 
         # After the for loop, remember the recent bundle id.
