@@ -300,11 +300,11 @@ def extract_zip(path, extract_path):
     return member_list
 
 
-def make_zip(arg_list, name='tmp_container', subpath_to_remove=''):
-    '''Make a ZIP file containing everything in arg_list
+def make_zip(to_zip, name='tmp_container', subpath_to_remove=''):
+    '''Make a ZIP file containing everything in to_zip
 
     Arguments:
-        arg_list -- List of files to be ZIP'd
+        to_zip -- List of files to be ZIP'd
 
     Keyword Arguments:
         name -- Name of the resulting ZIP file (default: {'tmp_container'})
@@ -314,9 +314,17 @@ def make_zip(arg_list, name='tmp_container', subpath_to_remove=''):
         Name of the resulting ZIP file
     '''
 
-    with zipfile.ZipFile(name + '.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for arg in arg_list:
-            zipf.write(arg, arg.replace(subpath_to_remove, ''))
+    if not isinstance(to_zip, str):
+        with zipfile.ZipFile(name + '.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for arg in to_zip:
+                zipf.write(arg, arg.replace(subpath_to_remove, ''))
+    else:
+        with zipfile.ZipFile(name + '.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(to_zip):
+                for f in files:
+                    path = os.path.join(root, f)
+                    zipf.write(path, path.replace(subpath_to_remove, ''))
+
     return name + '.zip'
 
 

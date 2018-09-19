@@ -538,7 +538,7 @@ def server_handle_call(potential_call):
         # Done. Make the payload containing all required files, read the
         # payload ...
         payload_path = utilities.make_zip(
-            file_list,
+            zip_file_base_path,
             name=zip_file_result_step_path,
             subpath_to_remove=zip_file_base_path + '/')
         payload = open(payload_path, 'rb')
@@ -573,7 +573,7 @@ def server_handle_call(potential_call):
         # There is no next hop, return the result to the client by
         # building and reading the payload...
         payload_path = utilities.make_zip(
-            file_list,
+            zip_file_base_path,
             name=zip_file_result_path,
             subpath_to_remove=zip_file_base_path + '/')
         payload = open(payload_path, 'rb')
