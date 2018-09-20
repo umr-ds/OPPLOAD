@@ -670,72 +670,69 @@ def server_listen(queue):
     server_publish_procedures_thread()
 
     all_bundles = rhizome.get_bundlelist()
-    token = all_bundles[0].bundle_id
+    token = all_bundles[0].token
 
     # This is the main server loop.
     while True:
-        bundles = rhizome.get_bundlelist()
-        # Iterate over all bundles
-        for bundle in bundles:
-            # We hit the virtual bottom of the list, so start over again.
-            if bundle.bundle_id == token:
-                break
+        bundles = rhizome.get_bundlelist_newsince(token)
+        if len(bundles) == 0:
+            continue
 
-            # If it is not a RPC bundle, skip.
-            if not bundle.manifest.service == RPC:
-                continue
+        bundle = bundles[0]
+        token = bundle.token
 
-            # We could download the bundle, but it seems that we are not the
-            # destination, so skip.
-            if not bundle.manifest.recipient == SERVER_DEFAULT_SID:
-                LOGGER.debug(
-                    " | Received RPC bundle for other client, skipping. (bid:{})"
-                    .format(bundle.manifest.id))
-                continue
+        # If it is not a RPC bundle, skip.
+        if not bundle.manifest.service == RPC:
+            continue
 
-            # At this point, we have an call and have to start handling it.
-            # Therefore, we download the manifest.
-            try:
-                potential_call = rhizome.get_bundle(bundle.bundle_id)
-            except DecryptionError:
-                LOGGER.error(
-                    " | Error decrypting received RPC bundle, skipping. (bid:{})"
-                    .format(bundle.manifest.id))
-                continue
+        # We could download the bundle, but it seems that we are not the
+        # destination, so skip.
+        if not bundle.manifest.recipient == SERVER_DEFAULT_SID:
+            LOGGER.debug(
+                " | Received RPC bundle for other client, skipping. (bid:{})"
+                .format(bundle.manifest.id))
+            continue
 
-            # Yay, ACK received.
-            if potential_call.manifest.type == ACK:
-                LOGGER.info('{} | Received ACK for {} from {}'.format(
-                    potential_call.manifest.rpcid,
-                    potential_call.manifest.name,
-                    potential_call.manifest.sender))
+        # At this point, we have an call and have to start handling it.
+        # Therefore, we download the manifest.
+        try:
+            potential_call = rhizome.get_bundle(bundle.bundle_id)
+        except DecryptionError:
+            LOGGER.error(
+                " | Error decrypting received RPC bundle, skipping. (bid:{})"
+                .format(bundle.manifest.id))
+            continue
 
-            # All checks pass, start the execution (either in background
-            # or blocking in a queue)
-            elif potential_call.manifest.type == CALL:
-                LOGGER.info(
-                    '{} | -Runtime- Received call, starting handling.'
-                    .format(potential_call.manifest.rpcid))
-                if queue:
-                    server_handle_call(potential_call)
-                else:
-                    start_new_thread(server_handle_call, (potential_call, ))
+        # Yay, ACK received.
+        if potential_call.manifest.type == ACK:
+            LOGGER.info('{} | Received ACK for {} from {}'.format(
+                potential_call.manifest.rpcid,
+                potential_call.manifest.name,
+                potential_call.manifest.sender))
 
-            # If the bundle is a cleanup file, we start the cleanup routine.
-            elif potential_call.manifest.type == CLEANUP:
-                LOGGER.info('{} | Cleaning up store for bundle {}'.format(
-                    potential_call.manifest.rpcid, bundle.bundle_id))
-                server_cleanup_store(potential_call)
-
-            elif potential_call.manifest.type == RESULT:
-                LOGGER.debug('{} | Recieved RPC result, skipping.'.format(
-                    potential_call.manifest.rpcid))
+        # All checks pass, start the execution (either in background
+        # or blocking in a queue)
+        elif potential_call.manifest.type == CALL:
+            LOGGER.info(
+                '{} | -Runtime- Received call, starting handling.'
+                .format(potential_call.manifest.rpcid))
+            if queue:
+                server_handle_call(potential_call)
             else:
-                LOGGER.error(
-                    "{} | Received RPC bundle of unknown type ({}), skipping."
-                    .format(potential_call.manifest.rpcid,
-                            potential_call.manifest.type))
+                start_new_thread(server_handle_call, (potential_call, ))
 
-        # After the for loop, remember the recent bundle id.
-        token = bundles[0].bundle_id
-        time.sleep(1)
+        # If the bundle is a cleanup file, we start the cleanup routine.
+        elif potential_call.manifest.type == CLEANUP:
+            LOGGER.info('{} | Cleaning up store for bundle {}'.format(
+                potential_call.manifest.rpcid, bundle.bundle_id))
+            server_cleanup_store(potential_call)
+
+        elif potential_call.manifest.type == RESULT:
+            LOGGER.debug('{} | Recieved RPC result, skipping.'.format(
+                potential_call.manifest.rpcid))
+        else:
+            LOGGER.error(
+                "{} | Received RPC bundle of unknown type ({}), skipping."
+                .format(potential_call.manifest.rpcid,
+                        potential_call.manifest.type))
+

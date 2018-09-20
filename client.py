@@ -122,97 +122,92 @@ def client_call(job_file_path):
         job_id, first_job.procedure, call_bundle.bundle_id))
 
     # Now we wait for the result.
-    token = call_bundle.bundle_id
-    result_received = False
-    while not result_received:
-        bundles = rhizome.get_bundlelist()
+    all_bundles = rhizome.get_bundlelist()
+    token = all_bundles[0].token
 
-        for bundle in bundles:
-            # Cool, we are done.
-            if result_received:
-                break
+    while True:
+        bundles = rhizome.get_bundlelist_newsince(token)
+        if len(bundles) == 0:
+            continue
 
-            # We hit the virtual bottom of the bundle list, so we need
-            # to poll the recent bundles.
-            if bundle.bundle_id == token:
-                break
+        bundle = bundles[0]
+        token = bundle.token
 
-            # Don't bother, if it is not a RPC bundle.
-            if not bundle.manifest.service == RPC:
-                continue
+        # Don't bother, if it is not a RPC bundle.
+        if not bundle.manifest.service == RPC:
+            continue
 
-            # Before further checks, we have to download the manifest
-            # to have all metadata available.
-            try:
-                potential_result = rhizome.get_bundle(bundle.bundle_id)
-            except DecryptionError:
-                continue
+        # Ignore bundles not sended to me
+        if not bundle.manifest.recipient == client_default_sid:
+            continue
 
-            # Yay, ACK received.
-            if (potential_result.manifest.type == ACK and
-                    potential_result.manifest.rpcid == job_id):
-                LOGGER.info('{} | Received ACK from {}'.format(
-                    potential_result.manifest.rpcid,
-                    potential_result.manifest.sender))
+        # Before further checks, we have to download the manifest
+        # to have all metadata available.
+        try:
+            potential_result = rhizome.get_bundle(bundle.bundle_id)
+        except DecryptionError:
+            continue
 
-            # Here we have the result.
-            if (potential_result.manifest.type == RESULT and
-                    potential_result.manifest.rpcid == job_id):
-                LOGGER.info(
-                    '{} | -Runtime- Received result.'.format(
-                        potential_result.manifest.rpcid))
-                # Use the same filename as for the call, except
-                # we append result instead of call to the name.
-                result_path = zip_file_base_path + '_result.zip'
+        # Yay, ACK received.
+        if (potential_result.manifest.type == ACK and
+                potential_result.manifest.rpcid == job_id):
+            LOGGER.info('{} | Received ACK from {}'.format(
+                potential_result.manifest.rpcid,
+                potential_result.manifest.sender))
 
-                # Download the payload from the Rhizome store and
-                # write it to the mentioned ZIP file
-                with open(result_path, 'wb') as zip_file:
-                    zip_file.write(potential_result.payload)
-                LOGGER.info(
-                    '{} | Download is done. Cleaning up store.'.format(job_id))
+        # Here we have the result.
+        if (potential_result.manifest.type == RESULT and
+                potential_result.manifest.rpcid == job_id):
+            LOGGER.info(
+                '{} | -Runtime- Received result.'.format(
+                    potential_result.manifest.rpcid))
+            # Use the same filename as for the call, except
+            # we append result instead of call to the name.
+            result_path = zip_file_base_path + '_result.zip'
 
-                # The final step is to cleanup the store by updating
-                # the call bundle by setting the CLEANUP flag to the
-                # bundle and removing the payload.
-                call_bundle.refresh()
-                call_bundle.manifest.type = CLEANUP
-                call_bundle.payload = ''
-                call_bundle.update()
-                result_received = True
+            # Download the payload from the Rhizome store and
+            # write it to the mentioned ZIP file
+            with open(result_path, 'wb') as zip_file:
+                zip_file.write(potential_result.payload)
+            LOGGER.info(
+                '{} | Download is done. Cleaning up store.'.format(job_id))
 
-                LOGGER.info(
-                    '{} | -End- Finished RPC, result: {}'
-                    .format(job_id, result_path))
-                break
+            # The final step is to cleanup the store by updating
+            # the call bundle by setting the CLEANUP flag to the
+            # bundle and removing the payload.
+            call_bundle.refresh()
+            call_bundle.manifest.type = CLEANUP
+            call_bundle.payload = ''
+            call_bundle.update()
 
-            # One of the servers had an error, so see what is going on.
-            if (potential_result.manifest.type == ERROR
-                    and potential_result.manifest.rpcid == job_id):
+            LOGGER.info(
+                '{} | -End- Finished RPC, result: {}'
+                .format(job_id, result_path))
+            break
 
-                result_path = zip_file_base_path + '_error.zip'
+        # One of the servers had an error, so see what is going on.
+        if (potential_result.manifest.type == ERROR
+                and potential_result.manifest.rpcid == job_id):
 
-                # Download the payload from the Rhizome store and
-                # write it to the mentioned ZIP file
-                with open(result_path, 'wb') as zip_file:
-                    zip_file.write(potential_result.payload)
-                LOGGER.info(
-                    '{} | Download is done. Cleaning up store.'.format(job_id))
+            result_path = zip_file_base_path + '_error.zip'
 
-                call_bundle.refresh()
-                call_bundle.manifest.type = CLEANUP
-                call_bundle.payload = ''
-                call_bundle.update()
-                result_received = True
+            # Download the payload from the Rhizome store and
+            # write it to the mentioned ZIP file
+            with open(result_path, 'wb') as zip_file:
+                zip_file.write(potential_result.payload)
+            LOGGER.info(
+                '{} | Download is done. Cleaning up store.'.format(job_id))
 
-                LOGGER.warn(
-                    u'{} | -End- Received error \'{}\' for job {}.'
-                    .format(
-                        job_id,
-                        potential_result.manifest.reason,
-                        potential_result.manifest.name))
-                break
+            call_bundle.refresh()
+            call_bundle.manifest.type = CLEANUP
+            call_bundle.payload = ''
+            call_bundle.update()
 
-        # After the for loop, remember the recent bundle id.
-        token = bundles[0].bundle_id
-        time.sleep(1)
+            LOGGER.warn(
+                u'{} | -End- Received error \'{}\' for job {}.'
+                .format(
+                    job_id,
+                    potential_result.manifest.reason,
+                    potential_result.manifest.name))
+            break
+
