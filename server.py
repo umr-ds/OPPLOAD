@@ -624,6 +624,10 @@ def server_cleanup_store(bundle):
     global CLEANUP_BUNDLES
     global SERVAL
 
+    # check if there are bundles to be cleaned up
+    if stored_bundle_ids not in CLEANUP_BUNDLES:
+        return
+
     # Get all IDs associated with this bundle id
     stored_bundle_ids = CLEANUP_BUNDLES[bundle.bundle_id]
 
