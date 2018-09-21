@@ -15,6 +15,7 @@ from pyserval.client import Client
 from pyserval.exceptions import DecryptionError
 from pyserval.exceptions import InvalidTokenError, RhizomeHTTPStatusError
 from requests.exceptions import ConnectionError
+from json.decoder import JSONDecodeError
 
 import utilities
 from utilities import LOGGER
