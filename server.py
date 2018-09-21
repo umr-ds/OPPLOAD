@@ -16,6 +16,7 @@ import math
 
 from pyserval.client import Client
 from pyserval.exceptions import DuplicateBundleException, DecryptionError
+from requests.exceptions import ConnectionError
 
 import utilities
 from utilities import LOGGER
@@ -678,7 +679,13 @@ def server_listen(queue):
 
     # This is the main server loop.
     while True:
-        bundles = rhizome.get_bundlelist_newsince(token)
+        try:
+            bundles = rhizome.get_bundlelist_newsince(token)
+        except ConnectionError:
+            LOGGER.warn(
+                " | Connection Error while calling newsince, continuing...")
+            continue
+
         if len(bundles) == 0:
             continue
 
@@ -739,4 +746,3 @@ def server_listen(queue):
                 "{} | Received RPC bundle of unknown type ({}), skipping."
                 .format(potential_call.manifest.rpcid,
                         potential_call.manifest.type))
-
