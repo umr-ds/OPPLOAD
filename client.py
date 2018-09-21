@@ -11,8 +11,10 @@ import math
 import sys
 import hashlib
 
-from pyserval.exceptions import DecryptionError
 from pyserval.client import Client
+from pyserval.exceptions import DecryptionError
+from pyserval.exceptions import InvalidTokenError, RhizomeHTTPStatusError
+from requests.exceptions import ConnectionError
 
 import utilities
 from utilities import LOGGER
