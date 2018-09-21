@@ -165,6 +165,13 @@ def client_call(job_file_path):
             time.sleep(1)
             continue
 
+        if len(bundles) == 0:
+            LOGGER.warn(
+                " | Newsince returned empty list, continuing..."
+                .format(e))
+            time.sleep(1)
+            continue
+
         bundle = bundles[0]
         token = bundle.token
 

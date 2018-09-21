@@ -719,6 +719,9 @@ def server_listen(queue):
             continue
 
         if len(bundles) == 0:
+            LOGGER.warn(" | Newsince returned empty list, continuing..."
+                        .format(e))
+            time.sleep(1)
             continue
 
         bundle = bundles[0]
