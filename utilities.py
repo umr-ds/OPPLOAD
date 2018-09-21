@@ -595,6 +595,8 @@ def select_server(server_list, selection_type=FIRST):
     if selection_type == PROB:
         return select_probabilistic_server(server_list)
 
+    return None
+
 
 def parse_available_servers(rhizome, own_sid, originator_sid=None):
     '''This function iterates through all RPC offers and parses them
@@ -762,7 +764,14 @@ def lookup_server(rhizome, default_sid, originator, job, job_id,
     # If we have a list of potential servers, get the server based on
     # the selection algorithm as in the configure script.
     rated_servers = [rate_server(server, job) for server in servers]
-    job.server = select_server(rated_servers, CONFIGURATION['server']).sid
+
+    try:
+        job.server = select_server(rated_servers, CONFIGURATION['server']).sid
+    except AttributeError:
+        reason = '{} | Could not select server for the job using {}'.format(
+            job_id, CONFIGURATION['server'])
+        LOGGER.critical(" | " + reason)
+        return reason
 
     # Now everything is done. Set the SID to the job file and continue
     # with processing.
