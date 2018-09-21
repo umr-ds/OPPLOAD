@@ -126,7 +126,32 @@ def client_call(job_file_path):
     token = all_bundles[0].token
 
     while True:
-        bundles = rhizome.get_bundlelist_newsince(token)
+        try:
+            bundles = rhizome.get_bundlelist_newsince(token)
+
+        except ConnectionError:
+            LOGGER.warn(
+                " | ConnectionError while calling newsince, continuing...")
+            continue
+
+        except RhizomeHTTPStatusError as e:
+            LOGGER.warn(
+                " | RhizomeHTTPStatusError while calling newsince, \
+                hint: {}, continuing...".format(e))
+            continue
+
+        except InvalidTokenError as e:
+            LOGGER.warn(
+                " | InvalidTokenError while calling newsince, \
+                hint: {}, continuing...".format(e))
+            continue
+
+        except KeyError as e:
+            LOGGER.warn(
+                " | KeyError while calling newsince, \
+                hint: {}, continuing...".format(e))
+            continue
+
         if len(bundles) == 0:
             continue
 

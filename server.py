@@ -16,6 +16,7 @@ import math
 
 from pyserval.client import Client
 from pyserval.exceptions import DuplicateBundleException, DecryptionError
+from pyserval.exceptions import InvalidTokenError, RhizomeHTTPStatusError
 from requests.exceptions import ConnectionError
 
 import utilities
@@ -681,9 +682,28 @@ def server_listen(queue):
     while True:
         try:
             bundles = rhizome.get_bundlelist_newsince(token)
+
         except ConnectionError:
             LOGGER.warn(
-                " | Connection Error while calling newsince, continuing...")
+                " | ConnectionError while calling newsince, continuing...")
+            continue
+
+        except RhizomeHTTPStatusError as e:
+            LOGGER.warn(
+                " | RhizomeHTTPStatusError while calling newsince, \
+                hint: {}, continuing...".format(e))
+            continue
+
+        except InvalidTokenError as e:
+            LOGGER.warn(
+                " | InvalidTokenError while calling newsince, \
+                hint: {}, continuing...".format(e))
+            continue
+
+        except KeyError as e:
+            LOGGER.warn(
+                " | KeyError while calling newsince, \
+                hint: {}, continuing...".format(e))
             continue
 
         if len(bundles) == 0:
