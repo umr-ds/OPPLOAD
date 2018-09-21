@@ -134,27 +134,35 @@ def client_call(job_file_path):
         except ConnectionError:
             LOGGER.warn(
                 " | ConnectionError while calling newsince, continuing...")
+            time.sleep(1)
             continue
 
         except RhizomeHTTPStatusError as e:
             LOGGER.warn(
-                " | RhizomeHTTPStatusError while calling newsince, \
-                hint: {}, continuing...".format(e))
+                " | RhizomeHTTPStatusError while calling newsince, hint: {}, continuing..."
+                .format(e))
+            time.sleep(1)
             continue
 
         except InvalidTokenError as e:
             LOGGER.warn(
-                " | InvalidTokenError while calling newsince, \
-                hint: {}, continuing...".format(e))
+                " | InvalidTokenError while calling newsince, hint: {}, continuing..."
+                .format(e))
+            time.sleep(1)
             continue
 
         except KeyError as e:
             LOGGER.warn(
-                " | KeyError while calling newsince, \
-                hint: {}, continuing...".format(e))
+                " | KeyError while calling newsince, hint: {}, continuing...".
+                format(e))
+            time.sleep(1)
             continue
 
-        if len(bundles) == 0:
+        except JSONDecodeError as e:
+            LOGGER.warn(
+                " | JSONDecodeError while calling newsince, hint: {}, continuing..."
+                .format(e))
+            time.sleep(1)
             continue
 
         bundle = bundles[0]
@@ -237,4 +245,3 @@ def client_call(job_file_path):
                     potential_result.manifest.reason,
                     potential_result.manifest.name))
             break
-

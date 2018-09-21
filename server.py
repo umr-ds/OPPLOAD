@@ -18,6 +18,7 @@ from pyserval.client import Client
 from pyserval.exceptions import DuplicateBundleException, DecryptionError
 from pyserval.exceptions import InvalidTokenError, RhizomeHTTPStatusError
 from requests.exceptions import ConnectionError
+from json.decoder import JSONDecodeError
 
 import utilities
 from utilities import LOGGER
@@ -686,24 +687,35 @@ def server_listen(queue):
         except ConnectionError:
             LOGGER.warn(
                 " | ConnectionError while calling newsince, continuing...")
+            time.sleep(1)
             continue
 
         except RhizomeHTTPStatusError as e:
             LOGGER.warn(
-                " | RhizomeHTTPStatusError while calling newsince, \
-                hint: {}, continuing...".format(e))
+                " | RhizomeHTTPStatusError while calling newsince, hint: {}, continuing..."
+                .format(e))
+            time.sleep(1)
             continue
 
         except InvalidTokenError as e:
             LOGGER.warn(
-                " | InvalidTokenError while calling newsince, \
-                hint: {}, continuing...".format(e))
+                " | InvalidTokenError while calling newsince, hint: {}, continuing..."
+                .format(e))
+            time.sleep(1)
             continue
 
         except KeyError as e:
             LOGGER.warn(
-                " | KeyError while calling newsince, \
-                hint: {}, continuing...".format(e))
+                " | KeyError while calling newsince, hint: {}, continuing..."
+                .format(e))
+            time.sleep(1)
+            continue
+
+        except JSONDecodeError as e:
+            LOGGER.warn(
+                " | JSONDecodeError while calling newsince, hint: {}, continuing..."
+                .format(e))
+            time.sleep(1)
             continue
 
         if len(bundles) == 0:
