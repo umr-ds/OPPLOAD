@@ -1,8 +1,10 @@
-# DTN-RPyC
-Remote Procedure Calls in Delay-Tolerant Networks.
+# OPLLOAD
+Workflow offloading in opportunistic networks
+
+**Note: OPPLOAD was formerly called DTN-RPyC. The renaming was not done in the code.**
 
 ## Requirements
-There are some requirements for DTN-RPyC, `requests`, `pyserval`, `numpy` and `Serval`. Furthermore, DTN-RPyC was tested on Ubuntu 16.04. It should work on other Linux distros and macOS, even *BSD should work, but was not tested, yet. Thus, the following guide will assume Ubuntu 16.04.
+There are some requirements for OPPLOAD, `requests`, `pyserval`, `numpy` and `Serval`. Furthermore, OPPLOAD was tested on Ubuntu 16.04. It should work on other Linux distros and macOS, even *BSD should work, but was not tested, yet. Thus, the following guide will assume Ubuntu 16.04.
 
 This guide will not show how to install these dependencies. See the following instructions:
  * [Requests](http://docs.python-requests.org/en/master/)
@@ -16,8 +18,8 @@ In order to be able to talk to the Serval REST API, you have to set some credent
 api.restful.users.<USERNAME>.password=<PASSWORD>
 ```
 
-## Preparing DTN-RPyC
-For DTN-RPyC you need some configurations. Examples for the configurations can be found in the `examples` folder.
+## Preparing OPPLOAD
+For OPPLOAD you need some configurations. Examples for the configurations can be found in the `examples` folder.
 
 ### Main configuration
 The first one is the main configuration file. Here, you define a bunch of variables:
@@ -48,7 +50,7 @@ gps_coord=<VALUE> # The location of the node in x,y
 The `examples` folder contains an example script how to generate these values.
 
 ### Server Selection
-DTN-RPyC offer four server selection modes.
+OPPLOAD offer four server selection modes.
 
 #### First
 The first server found in the Rhizome store will be chosen (`first`).
@@ -86,15 +88,15 @@ The success code has always to be `0` and the result has to be written to `stdou
 If the result is a file, the procedure has to write the file path to the result file to `stdout`. The server will handle everything else.
 
 ## Usage
-DTN-RPyC has two modes, `client` and `server`.
+OPPLOAD has two modes, `client` and `server`.
 
 ```
-usage: DTN-RPyC [-h] [-f CONFIG_PATH] (-c JOB_FILE_PATH | -s) [-q]
+usage: dtn_rpyc [-h] [-f CONFIG_PATH] (-c JOB_FILE_PATH | -s) [-q]
 
 optional arguments:
   -h, --help            show this help message and exit
   -f CONFIG_PATH, --config CONFIG_PATH
-                        Path to the DTN-RPyC config file. Default is
+                        Path to the OPPLOAD config file. Default is
                         $PWD/rpc.conf.
   -c JOB_FILE_PATH, --client JOB_FILE_PATH
                         Call a procedure(s) specified in the job file given.
@@ -135,7 +137,7 @@ The option `-s` starts the server. Incoming calls are handled automatically, you
 You can use docker to run the example simple and fast:
 
 ```
-docker run --rm --privileged -v <PATH/TO/DTN-RPyC>:/dtnrpc -v <PATH/TO/DTN-RPyC>/examples:/tmp/dtnrpc -v /lib/modules:/lib/modules -it --cap-add=NET_ADMIN -e DISPLAY=<YOURDISPLAYVAR>:0 umrds/serval_core_worker-gui
+docker run --rm --privileged -v <PATH/TO/OPPLOAD>:/dtnrpc -v <PATH/TO/OPPLOAD>/examples:/tmp/dtnrpc -v /lib/modules:/lib/modules -it --cap-add=NET_ADMIN -e DISPLAY=<YOURDISPLAYVAR>:0 umrds/serval_core_worker-gui
 ```
 
 This will pull a docker container containing all dependencies and start a CORE GUI forwarded to your local X server.
